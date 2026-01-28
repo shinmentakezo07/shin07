@@ -351,7 +351,9 @@ def log_request_details(request_data: MessagesRequest):
                     text_acc.append(getattr(block, "text", ""))
                 else:
                     if text_acc:
-                        logger.debug(f"  [{i}] {role}/text: {sanitize(''.join(text_acc))}")
+                        logger.debug(
+                            f"  [{i}] {role}/text: {sanitize(''.join(text_acc))}"
+                        )
                         text_acc = []
                     if block_type == "tool_use":
                         name = getattr(block, "name", "unknown")
@@ -365,6 +367,9 @@ def log_request_details(request_data: MessagesRequest):
                         logger.debug(
                             f"  [{i}] {role}/tool_result[{tool_use_id}]: {sanitize(str(content))}"
                         )
+                    elif block_type == "thinking":
+                        thinking = getattr(block, "thinking", "")
+                        logger.debug(f"  [{i}] {role}/thinking: {sanitize(thinking)}")
             if text_acc:
                 logger.debug(f"  [{i}] {role}/text: {sanitize(''.join(text_acc))}")
 

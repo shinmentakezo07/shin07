@@ -105,6 +105,9 @@ class NvidiaNimProvider(BaseProvider):
         await self._rate_limiter.acquire()
 
         body = self._build_request_body(request, stream=True)
+        # Log the converted body for context verification
+        logger.debug(f"STREAM REQUEST BODY: {json.dumps(body, default=str)}")
+
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -339,6 +342,9 @@ class NvidiaNimProvider(BaseProvider):
         await self._rate_limiter.acquire()
 
         body = self._build_request_body(request, stream=False)
+        # Log the converted body for context verification
+        logger.debug(f"COMPLETE REQUEST BODY: {json.dumps(body, default=str)}")
+
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
