@@ -77,7 +77,15 @@ class Message(BaseModel):
     role: Literal["user", "assistant"]
     content: Union[
         str,
-        List[Union[ContentBlockText, ContentBlockImage, ContentBlockToolUse, ContentBlockToolResult, ContentBlockThinking]],
+        List[
+            Union[
+                ContentBlockText,
+                ContentBlockImage,
+                ContentBlockToolUse,
+                ContentBlockToolResult,
+                ContentBlockThinking,
+            ]
+        ],
     ]
     reasoning_content: Optional[str] = None
 
@@ -116,7 +124,7 @@ class MessagesRequest(BaseModel):
         clean_v = v
         for prefix in ["anthropic/", "openai/", "gemini/"]:
             if clean_v.startswith(prefix):
-                clean_v = clean_v[len(prefix):]
+                clean_v = clean_v[len(prefix) :]
                 break
 
         if "haiku" in clean_v.lower():
@@ -149,7 +157,7 @@ class TokenCountRequest(BaseModel):
         clean_v = v
         for prefix in ["anthropic/", "openai/", "gemini/"]:
             if clean_v.startswith(prefix):
-                clean_v = clean_v[len(prefix):]
+                clean_v = clean_v[len(prefix) :]
                 break
 
         if "haiku" in clean_v.lower():
@@ -174,9 +182,15 @@ class MessagesResponse(BaseModel):
     id: str
     model: str
     role: Literal["assistant"] = "assistant"
-    content: List[Union[ContentBlockText, ContentBlockToolUse, ContentBlockThinking, Dict[str, Any]]]
+    content: List[
+        Union[
+            ContentBlockText, ContentBlockToolUse, ContentBlockThinking, Dict[str, Any]
+        ]
+    ]
     type: Literal["message"] = "message"
-    stop_reason: Optional[Literal["end_turn", "max_tokens", "stop_sequence", "tool_use"]] = None
+    stop_reason: Optional[
+        Literal["end_turn", "max_tokens", "stop_sequence", "tool_use"]
+    ] = None
     stop_sequence: Optional[str] = None
     usage: Usage
 
@@ -242,7 +256,16 @@ def extract_command_prefix(command: str) -> str:
             return "none"
 
         first_word = cmd_parts[0]
-        two_word_commands = {"git", "npm", "docker", "kubectl", "cargo", "go", "pip", "yarn"}
+        two_word_commands = {
+            "git",
+            "npm",
+            "docker",
+            "kubectl",
+            "cargo",
+            "go",
+            "pip",
+            "yarn",
+        }
 
         if first_word in two_word_commands and len(cmd_parts) > 1:
             second_word = cmd_parts[1]
@@ -301,33 +324,51 @@ def get_token_count(messages, system=None, tools=None) -> int:
 
     if tools:
         for tool in tools:
-            total_chars += len(tool.name) + len(tool.description or "") + len(json.dumps(tool.input_schema))
+            total_chars += (
+                len(tool.name)
+                + len(tool.description or "")
+                + len(json.dumps(tool.input_schema))
+            )
 
     return max(1, total_chars // 4)
 
 
 def log_request_details(request_data: MessagesRequest):
     """Log detailed request content for debugging."""
+
+    def sanitize(text: str, max_len: int = 200) -> str:
+        """Escape newlines and truncate for single-line logging."""
+        text = text.replace("\n", "\\n").replace("\r", "\\r")
+        return text[:max_len] + "..." if len(text) > max_len else text
+
     for i, msg in enumerate(request_data.messages):
         role = msg.role
         if isinstance(msg.content, str):
-            preview = msg.content[:200] + "..." if len(msg.content) > 200 else msg.content
-            logger.debug(f"  [{i}] {role}: {preview}")
+            logger.debug(f"  [{i}] {role}: {sanitize(msg.content)}")
         elif isinstance(msg.content, list):
+            text_acc = []
             for block in msg.content:
-                block_type = getattr(block, 'type', None)
+                block_type = getattr(block, "type", None)
                 if block_type == "text":
-                    text = getattr(block, 'text', '')
-                    preview = text[:200] + "..." if len(text) > 200 else text
-                    logger.debug(f"  [{i}] {role}/text: {preview}")
-                elif block_type == "tool_use":
-                    name = getattr(block, 'name', 'unknown')
-                    inp = getattr(block, 'input', {})
-                    logger.debug(f"  [{i}] {role}/tool_use: {name}({json.dumps(inp)[:500]})")
-                elif block_type == "tool_result":
-                    content = getattr(block, 'content', '')
-                    tool_use_id = getattr(block, 'tool_use_id', 'unknown')
-                    logger.debug(f"  [{i}] {role}/tool_result[{tool_use_id}]: {str(content)[:200]}")
+                    text_acc.append(getattr(block, "text", ""))
+                else:
+                    if text_acc:
+                        logger.debug(f"  [{i}] {role}/text: {sanitize(''.join(text_acc))}")
+                        text_acc = []
+                    if block_type == "tool_use":
+                        name = getattr(block, "name", "unknown")
+                        inp = getattr(block, "input", {})
+                        logger.debug(
+                            f"  [{i}] {role}/tool_use: {name}({sanitize(json.dumps(inp), 500)})"
+                        )
+                    elif block_type == "tool_result":
+                        content = getattr(block, "content", "")
+                        tool_use_id = getattr(block, "tool_use_id", "unknown")
+                        logger.debug(
+                            f"  [{i}] {role}/tool_result[{tool_use_id}]: {sanitize(str(content))}"
+                        )
+            if text_acc:
+                logger.debug(f"  [{i}] {role}/text: {sanitize(''.join(text_acc))}")
 
 
 @app.post("/v1/messages")
@@ -337,6 +378,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
             is_prefix_req, command = is_prefix_detection_request(request_data)
             if is_prefix_req:
                 import uuid
+
                 return MessagesResponse(
                     id=f"msg_{uuid.uuid4()}",
                     model=request_data.model,
@@ -345,15 +387,23 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                     usage=Usage(input_tokens=100, output_tokens=5),
                 )
 
-        logger.info(f"Request: model={request_data.model}, messages={len(request_data.messages)}, stream={request_data.stream}")
+        logger.info(
+            f"Request: model={request_data.model}, messages={len(request_data.messages)}, stream={request_data.stream}"
+        )
         log_request_details(request_data)
 
         if request_data.stream:
-            input_tokens = get_token_count(request_data.messages, request_data.system, request_data.tools)
+            input_tokens = get_token_count(
+                request_data.messages, request_data.system, request_data.tools
+            )
             return StreamingResponse(
                 provider.stream_response(request_data, input_tokens=input_tokens),
                 media_type="text/event-stream",
-                headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache", "Connection": "keep-alive"},
+                headers={
+                    "X-Accel-Buffering": "no",
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                },
             )
         else:
             response_json = await provider.complete(request_data)
@@ -361,6 +411,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 
     except Exception as e:
         import traceback
+
         logger.error(f"Error: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=getattr(e, "status_code", 500), detail=str(e))
 
@@ -368,14 +419,23 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
 @app.post("/v1/messages/count_tokens")
 async def count_tokens(request_data: TokenCountRequest):
     try:
-        return TokenCountResponse(input_tokens=get_token_count(request_data.messages, request_data.system, request_data.tools))
+        return TokenCountResponse(
+            input_tokens=get_token_count(
+                request_data.messages, request_data.system, request_data.tools
+            )
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "provider": "nvidia_nim", "big_model": BIG_MODEL, "small_model": SMALL_MODEL}
+    return {
+        "status": "ok",
+        "provider": "nvidia_nim",
+        "big_model": BIG_MODEL,
+        "small_model": SMALL_MODEL,
+    }
 
 
 @app.get("/health")
