@@ -306,6 +306,30 @@ def get_token_count(messages, system=None, tools=None) -> int:
     return max(1, total_chars // 4)
 
 
+def log_request_details(request_data: MessagesRequest):
+    """Log detailed request content for debugging."""
+    for i, msg in enumerate(request_data.messages):
+        role = msg.role
+        if isinstance(msg.content, str):
+            preview = msg.content[:200] + "..." if len(msg.content) > 200 else msg.content
+            logger.debug(f"  [{i}] {role}: {preview}")
+        elif isinstance(msg.content, list):
+            for block in msg.content:
+                block_type = getattr(block, 'type', None)
+                if block_type == "text":
+                    text = getattr(block, 'text', '')
+                    preview = text[:200] + "..." if len(text) > 200 else text
+                    logger.debug(f"  [{i}] {role}/text: {preview}")
+                elif block_type == "tool_use":
+                    name = getattr(block, 'name', 'unknown')
+                    inp = getattr(block, 'input', {})
+                    logger.debug(f"  [{i}] {role}/tool_use: {name}({json.dumps(inp)[:500]})")
+                elif block_type == "tool_result":
+                    content = getattr(block, 'content', '')
+                    tool_use_id = getattr(block, 'tool_use_id', 'unknown')
+                    logger.debug(f"  [{i}] {role}/tool_result[{tool_use_id}]: {str(content)[:200]}")
+
+
 @app.post("/v1/messages")
 async def create_message(request_data: MessagesRequest, raw_request: Request):
     try:
@@ -322,6 +346,7 @@ async def create_message(request_data: MessagesRequest, raw_request: Request):
                 )
 
         logger.info(f"Request: model={request_data.model}, messages={len(request_data.messages)}, stream={request_data.stream}")
+        log_request_details(request_data)
 
         if request_data.stream:
             input_tokens = get_token_count(request_data.messages, request_data.system, request_data.tools)
