@@ -99,6 +99,16 @@ class HeuristicToolParser:
                 while True:
                     param_match = self.param_pattern.search(self.buffer)
                     if param_match and "</parameter>" in param_match.group(0):
+                        # Detect any content before the parameter match and preserve it
+                        pre_match_text = self.buffer[: param_match.start()]
+                        if pre_match_text.strip():
+                            # If there's non-whitespace text, we should probably treat it as content
+                            # However, purely whitespace might be formatting
+                            filtered_output += pre_match_text
+                        elif pre_match_text:
+                            # Preserve whitespace too just in case
+                            filtered_output += pre_match_text
+
                         key = param_match.group(1).strip()
                         val = param_match.group(2).strip()
                         self.current_parameters[key] = val
@@ -113,6 +123,11 @@ class HeuristicToolParser:
 
                 if "●" in self.buffer:
                     # Next tool call starting or something else, close current
+                    # But first, capture any text before the ●
+                    idx = self.buffer.find("●")
+                    if idx > 0:
+                        filtered_output += self.buffer[:idx]
+                        self.buffer = self.buffer[idx:]
                     finished_tool_call = True
                 elif (
                     len(self.buffer) > 0
@@ -122,6 +137,11 @@ class HeuristicToolParser:
                     # We have text that doesn't look like a tag, and we already parsed some or are in param state
                     # Let's see if we have trailing param starts
                     if "<parameter=" not in self.buffer:
+                        # Treat the buffer as text (it's not a parameter)
+                        # But wait, we are in PARSING_PARAMETERS.
+                        # If we have " some text", we should emit it and finish tool call.
+                        filtered_output += self.buffer
+                        self.buffer = ""
                         finished_tool_call = True
 
                 if finished_tool_call:
@@ -138,7 +158,7 @@ class HeuristicToolParser:
                         f"Heuristic bypass: Emitting tool call '{self.current_function_name}' with {len(self.current_parameters)} params"
                     )
                     self.state = ParserState.TEXT
-                    # Continue loop to process remaining buffer
+                    # Continue loop to process remaining buffer (which is empty or starts with ●)
                 else:
                     break
 

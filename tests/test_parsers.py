@@ -125,3 +125,102 @@ def test_partial_interleaved_streaming():
     assert len(tools3) == 1
     assert tools3[0]["name"] == "Read"
     assert tools3[0]["input"] == {"path": "test.py"}
+
+
+# --- New Robustness Tests ---
+
+
+def test_split_across_markers():
+    # Split across the trigger chaaracter
+    # "● <function=Test>"
+    # Split at various points
+    full_text = "● <function=Test><parameter=arg>val</parameter>"
+
+    for i in range(len(full_text)):
+        p = HeuristicToolParser()
+        chunk1 = full_text[:i]
+        chunk2 = full_text[i:]
+
+        tools = []
+        filtered, t = p.feed(chunk1)
+        tools.extend(t)
+        filtered2, t = p.feed(chunk2)
+        tools.extend(t)
+        tools.extend(p.flush())
+
+        if len(tools) != 1:
+            print(f"Failed split at index {i}: '{chunk1}' | '{chunk2}'")
+
+        assert len(tools) == 1, f"Failed split at index {i}"
+        assert tools[0]["name"] == "Test"
+        assert tools[0]["input"] == {"arg": "val"}
+
+
+def test_value_with_special_chars():
+    parser = HeuristicToolParser()
+    # Value with > inside
+    text = "● <function=Test><parameter=arg>a > b</parameter>"
+    _, tools = parser.feed(text)
+    tools.extend(parser.flush())
+
+    assert len(tools) == 1
+    assert tools[0]["input"]["arg"] == "a > b"
+
+
+def test_multiple_params_split():
+    full_text = (
+        "● <function=Test><parameter=p1>v1</parameter><parameter=p2>v2</parameter>"
+    )
+
+    for i in range(len(full_text)):
+        p = HeuristicToolParser()
+        tools = []
+        _, t = p.feed(full_text[:i])
+        tools.extend(t)
+        _, t = p.feed(full_text[i:])
+        tools.extend(t)
+        tools.extend(p.flush())
+
+        assert len(tools) == 1, f"Failed split at {i}"
+        assert tools[0]["input"] == {"p1": "v1", "p2": "v2"}
+
+
+def test_incomplete_tag_flush():
+    p = HeuristicToolParser()
+    p.feed("● <function=Recover><parameter=msg>hello")
+    tools = p.flush()
+
+    assert len(tools) == 1
+    assert tools[0]["input"]["msg"] == "hello"
+
+
+def test_garbage_interleaved():
+    p = HeuristicToolParser()
+    tools = []
+    _, t = p.feed("Some text ")
+    tools.extend(t)
+    _, t = p.feed("● <function=T1><parameter=x>1</parameter>")
+    tools.extend(t)
+    _, t = p.feed(" more text ")
+    tools.extend(t)
+    _, t = p.feed("● <function=T2><parameter=y>2</parameter>")
+    tools.extend(t)
+    tools.extend(p.flush())
+
+    assert len(tools) == 2
+    assert tools[0]["name"] == "T1"
+    assert tools[1]["name"] == "T2"
+
+
+def test_text_between_params_lost():
+    p = HeuristicToolParser()
+    # " text1 " is between function end and first param
+    # " text2 " is between params
+    text = "● <function=F> text1 <parameter=a>1</parameter> text2 <parameter=b>2</parameter>"
+    filtered, tools = p.feed(text)
+    tools.extend(p.flush())
+
+    # Check if "text1" and "text2" are preserved in filtered output
+    assert "text1" in filtered
+    assert "text2" in filtered
+    assert tools[0]["input"] == {"a": "1", "b": "2"}
