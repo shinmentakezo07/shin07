@@ -281,9 +281,16 @@ class CLISession:
     async def stop(self):
         if self.process and self.process.returncode is None:
             try:
+                logger.info(f"Stopping Claude CLI process {self.process.pid}")
                 self.process.terminate()
-                await self.process.wait()
+                try:
+                    await asyncio.wait_for(self.process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    logger.warning(f"Process {self.process.pid} did not terminate, killing...")
+                    self.process.kill()
+                    await self.process.wait()
                 return True
-            except:
+            except Exception as e:
+                logger.error(f"Error stopping session process: {e}")
                 return False
         return False

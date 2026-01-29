@@ -529,7 +529,7 @@ def register_bot_handlers(client: "TelegramClient"):
         except asyncio.CancelledError:
             logger.info(f"BOT: Task cancelled for session {captured_session_id or temp_session_id}")
             message_parts.append(("error", "Task was cancelled"))
-            await update_bot_ui("⏹ **Cancelled**", force=True)
+            await update_bot_ui("❌ **Failed**", force=True)
         except Exception as e:
             import traceback
             logger.error(f"Bot task failed: {e}\n{traceback.format_exc()}")
@@ -555,8 +555,24 @@ def register_bot_handlers(client: "TelegramClient"):
         
         # 1. Handle Commands
         if event.text == "/stop":
+            # 1. Cancel all queued and running messages in the message queue
+            cancelled_msgs = await message_queue.cancel_all()
+            
+            # 2. Stop all CLI sessions (subprocesses)
             await cli_session_manager.stop_all()
+            
+            # 3. Inform the user and update status of cancelled messages
             await event.reply("⏹ **All Claude sessions stopped.**")
+            
+            for msg in cancelled_msgs:
+                try:
+                    # We might not be able to edit if it's too old or already done, 
+                    # but we try to mark them as failed as requested.
+                    status_msg = await client.get_messages(msg.chat_id, ids=msg.reply_msg_id)
+                    if status_msg:
+                        await status_msg.edit("❌ **Failed** (Stopped by user)", parse_mode="markdown")
+                except Exception as e:
+                    logger.debug(f"Could not update status for cancelled msg {msg.msg_id}: {e}")
             return
         
         if event.text == "/stats":

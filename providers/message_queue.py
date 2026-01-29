@@ -7,7 +7,7 @@ Messages are processed one-by-one in order per session.
 
 import asyncio
 import logging
-from typing import Callable, Awaitable, Dict, Optional, NamedTuple
+from typing import Callable, Awaitable, Dict, Optional, NamedTuple, List, Any
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class QueuedMessage:
     chat_id: int
     msg_id: int
     reply_msg_id: int  # The status message to update
-    event: any  # Original Telegram event for context
+    event: Any  # Original Telegram event for context
 
 
 class SessionQueue:
@@ -31,6 +31,7 @@ class SessionQueue:
         self.queue: asyncio.Queue[QueuedMessage] = asyncio.Queue()
         self.is_processing = False
         self.current_task: Optional[asyncio.Task] = None
+        self.current_message: Optional[QueuedMessage] = None
 
 
 class MessageQueueManager:
@@ -91,7 +92,8 @@ class MessageQueueManager:
                 sq.is_processing = True
         
         # Process outside the lock
-        await self._process_message(session_id, message, processor)
+        sq = self._queues[session_id]
+        sq.current_task = asyncio.create_task(self._process_message(session_id, message, processor))
         return False
     
     async def _process_message(
@@ -101,11 +103,19 @@ class MessageQueueManager:
         processor: Callable[[str, QueuedMessage], Awaitable[None]],
     ) -> None:
         """Process a single message and then check the queue."""
+        sq = self._queues.get(session_id)
+        if sq:
+            sq.current_message = message
         try:
             await processor(session_id, message)
+        except asyncio.CancelledError:
+            logger.info(f"Task for session {session_id} was cancelled")
+            raise
         except Exception as e:
             logger.error(f"Error processing message for session {session_id}: {e}")
         finally:
+            if sq:
+                sq.current_message = None
             # Check if there are more messages in the queue
             await self._process_next(session_id, processor)
     
@@ -136,7 +146,7 @@ class MessageQueueManager:
                 return
         
         # Process next message (outside lock)
-        await self._process_message(session_id, next_msg, processor)
+        sq.current_task = asyncio.create_task(self._process_message(session_id, next_msg, processor))
     
     def get_queue_size(self, session_id: str) -> int:
         """Get the number of messages waiting in a session's queue."""
@@ -144,26 +154,47 @@ class MessageQueueManager:
             return 0
         return self._queues[session_id].queue.qsize()
     
-    def cancel_session(self, session_id: str) -> int:
+    def cancel_session(self, session_id: str) -> List[QueuedMessage]:
         """
-        Cancel all queued messages for a session.
+        Cancel all queued messages for a session and the running task.
         
         Returns:
-            Number of messages that were cancelled
+            List of messages that were cancelled (including the current one if any)
         """
         if session_id not in self._queues:
-            return 0
+            return []
         
         sq = self._queues[session_id]
-        cancelled = 0
+        cancelled_messages = []
         
+        # 1. Cancel running task
+        if sq.current_task and not sq.current_task.done():
+            sq.current_task.cancel()
+            if sq.current_message:
+                cancelled_messages.append(sq.current_message)
+        
+        # 2. Clear queue
         while not sq.queue.empty():
             try:
-                sq.queue.get_nowait()
-                cancelled += 1
+                msg = sq.queue.get_nowait()
+                cancelled_messages.append(msg)
             except asyncio.QueueEmpty:
                 break
         
         sq.is_processing = False
-        logger.info(f"Cancelled {cancelled} queued messages for session {session_id}")
-        return cancelled
+        logger.info(f"Cancelled {len(cancelled_messages)} messages for session {session_id}")
+        return cancelled_messages
+
+    async def cancel_all(self) -> List[QueuedMessage]:
+        """
+        Cancel everything in all sessions.
+        
+        Returns:
+            List of all cancelled messages across all sessions.
+        """
+        async with self._lock:
+            all_cancelled = []
+            session_ids = list(self._queues.keys())
+            for sid in session_ids:
+                all_cancelled.extend(self.cancel_session(sid))
+            return all_cancelled
