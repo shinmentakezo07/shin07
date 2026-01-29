@@ -336,24 +336,47 @@ def register_bot_handlers(client: "TelegramClient"):
         logger.info(f"BOT_TASK: {event.text}")
         status_msg = await event.reply("⏳ **Launching Claude CLI...**")
 
-        current_content = ""
+        # Unified message accumulator - all parts appended in order
+        message_parts = []  # List of (type, content) tuples
         last_ui_update = 0
 
-        async def update_bot_ui(text, status=None):
+        def build_unified_message(status=None):
+            """Build a single message from all accumulated parts."""
+            lines = []
+            if status:
+                lines.append(status)
+                lines.append("")
+            
+            for part_type, content in message_parts:
+                if part_type == "thinking":
+                    # Truncate thinking for display
+                    display_thinking = content[:1200] + ("..." if len(content) > 1200 else "")
+                    lines.append(f"💭 **Thinking:**\n```\n{display_thinking}\n```")
+                elif part_type == "tool":
+                    lines.append(f"🔧 **Tools:** `{content}`")
+                elif part_type == "subagent":
+                    lines.append(f"🤖 **Subagent:** {content}")
+                elif part_type == "content":
+                    lines.append(content)
+            
+            result = "\n".join(lines)
+            # Telegram message limit
+            if len(result) > 4000:
+                result = "..." + result[-3997:]
+            return result
+
+        async def update_bot_ui(status=None, force=False):
             nonlocal last_ui_update
-            if not text and not status:
-                return
             now = time.time()
-            if now - last_ui_update < 0.8: # Slightly faster
+            if not force and now - last_ui_update < 0.8:
                 return
             try:
-                display = f"{status}\n\n{text}" if status else text
-                if len(display) > 4000:
-                    display = "..." + display[-3997:]
-                await status_msg.edit(display, parse_mode="markdown")
-                last_ui_update = now
-            except:
-                pass
+                display = build_unified_message(status)
+                if display:
+                    await status_msg.edit(display, parse_mode="markdown")
+                    last_ui_update = now
+            except Exception as e:
+                logger.debug(f"UI update failed: {e}")
 
         try:
             async for event_data in cli_session.start_task(event.text):
@@ -373,43 +396,51 @@ def register_bot_handlers(client: "TelegramClient"):
                     continue
 
                 if parsed["type"] == "thinking":
-                    # Display thinking tokens with special prefix (streaming)
+                    # Append thinking to unified message
                     thinking_text = parsed["text"]
-                    await event.reply(f"💭 **Thinking:**\n```\n{thinking_text[:1500]}{'...' if len(thinking_text) > 1500 else ''}\n```", parse_mode="markdown")
+                    message_parts.append(("thinking", thinking_text))
+                    await update_bot_ui("🧠 **Claude is thinking...**")
 
                 elif parsed["type"] == "content":
                     # Handle thinking if present in combined event
                     if parsed.get("thinking"):
                         thinking_text = parsed["thinking"]
                         logger.debug(f"BOT: Got thinking: {len(thinking_text)} chars")
-                        await event.reply(f"💭 **Thinking:**\n```\n{thinking_text[:1500]}{'...' if len(thinking_text) > 1500 else ''}\n```", parse_mode="markdown")
-                    # Accumulate text content
+                        message_parts.append(("thinking", thinking_text))
+                    # Append text content
                     if parsed.get("text"):
                         logger.debug(f"BOT: Got text content: {len(parsed['text'])} chars")
-                        current_content += parsed["text"]
-                        await update_bot_ui(current_content, "🧠 **Claude is working...**")
+                        # Merge with last content part if exists, else append new
+                        if message_parts and message_parts[-1][0] == "content":
+                            prev_type, prev_content = message_parts[-1]
+                            message_parts[-1] = ("content", prev_content + parsed["text"])
+                        else:
+                            message_parts.append(("content", parsed["text"]))
+                        await update_bot_ui("🧠 **Claude is working...**")
                 
                 elif parsed["type"] == "tool_start":
                     names = [t.get("name") for t in parsed["tools"]]
-                    # Send a SEPARATE message for tool calls as requested
-                    await event.reply(f"🔧 **Running Tools:** `{', '.join(names)}`")
-                    # Update status message to show we're working
-                    await update_bot_ui(current_content, "⏳ **Executing tools...**")
+                    message_parts.append(("tool", ", ".join(names)))
+                    await update_bot_ui("⏳ **Executing tools...**")
                 
                 elif parsed["type"] == "subagent_start":
                     tasks = parsed["tasks"]
-                    await event.reply(f"🤖 **Subagent Task:** {', '.join(tasks)}")
-                    await update_bot_ui(current_content, "🔎 **Subagent working...**")
+                    message_parts.append(("subagent", ", ".join(tasks)))
+                    await update_bot_ui("🔎 **Subagent working...**")
 
                 elif parsed["type"] == "complete":
-                    logger.debug(f"BOT: Complete event, current_content length: {len(current_content)}")
+                    logger.debug(f"BOT: Complete event, parts count: {len(message_parts)}")
                     if parsed.get("status") == "failed":
-                        await status_msg.edit(f"❌ **Failed**\n\n{current_content}", parse_mode="markdown")
+                        await update_bot_ui("❌ **Failed**", force=True)
                     else:
-                        await status_msg.edit(f"✅ **Complete**\n\n{current_content or 'Done.'}", parse_mode="markdown")
+                        # Ensure we have some content for display
+                        if not message_parts:
+                            message_parts.append(("content", "Done."))
+                        await update_bot_ui("✅ **Complete**", force=True)
                 
                 elif parsed["type"] == "error":
-                    await event.reply(f"❌ **Error:** {parsed['message']}")
+                    message_parts.append(("content", f"**Error:** {parsed['message']}"))
+                    await update_bot_ui("❌ **Error**", force=True)
         except Exception as e:
             logger.error(f"Bot failed: {e}")
             await event.reply(f"💥 **Failed:** {e}")
