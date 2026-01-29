@@ -24,10 +24,12 @@ class CLIParser:
         elif etype == "result":
             # Safely get message from result which might be a list or dict
             res = event.get("result")
+            logger.debug(f"Parsing result event: res type={type(res)}, keys={res.keys() if isinstance(res, dict) else 'N/A'}")
             if isinstance(res, dict):
                 msg_obj = res.get("message")
             if not msg_obj:
                 msg_obj = event.get("message")
+            logger.debug(f"Result msg_obj: {msg_obj is not None}, type={type(msg_obj) if msg_obj else 'None'}")
 
         if msg_obj and isinstance(msg_obj, dict):
             content = msg_obj.get("content", [])
@@ -57,10 +59,15 @@ class CLIParser:
                         return {"type": "subagent_start", "tasks": subagents}
                     return {"type": "tool_start", "tools": tool_calls}
 
+                # Return combined result if we have content
+                result = {}
                 if thinking_parts:
-                    return {"type": "thinking", "text": "\n".join(thinking_parts)}
+                    result["thinking"] = "\n".join(thinking_parts)
                 if parts:
-                    return {"type": "content", "text": "".join(parts)}
+                    result["text"] = "".join(parts)
+                if result:
+                    result["type"] = "content"
+                    return result
 
         # 2. Handle streaming deltas
         if etype == "content_block_delta":

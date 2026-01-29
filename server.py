@@ -373,13 +373,21 @@ def register_bot_handlers(client: "TelegramClient"):
                     continue
 
                 if parsed["type"] == "thinking":
-                    # Display thinking tokens with special prefix
+                    # Display thinking tokens with special prefix (streaming)
                     thinking_text = parsed["text"]
                     await event.reply(f"💭 **Thinking:**\n```\n{thinking_text[:1500]}{'...' if len(thinking_text) > 1500 else ''}\n```", parse_mode="markdown")
 
                 elif parsed["type"] == "content":
-                    current_content += parsed["text"]
-                    await update_bot_ui(current_content, "🧠 **Claude is working...**")
+                    # Handle thinking if present in combined event
+                    if parsed.get("thinking"):
+                        thinking_text = parsed["thinking"]
+                        logger.debug(f"BOT: Got thinking: {len(thinking_text)} chars")
+                        await event.reply(f"💭 **Thinking:**\n```\n{thinking_text[:1500]}{'...' if len(thinking_text) > 1500 else ''}\n```", parse_mode="markdown")
+                    # Accumulate text content
+                    if parsed.get("text"):
+                        logger.debug(f"BOT: Got text content: {len(parsed['text'])} chars")
+                        current_content += parsed["text"]
+                        await update_bot_ui(current_content, "🧠 **Claude is working...**")
                 
                 elif parsed["type"] == "tool_start":
                     names = [t.get("name") for t in parsed["tools"]]
@@ -394,6 +402,7 @@ def register_bot_handlers(client: "TelegramClient"):
                     await update_bot_ui(current_content, "🔎 **Subagent working...**")
 
                 elif parsed["type"] == "complete":
+                    logger.debug(f"BOT: Complete event, current_content length: {len(current_content)}")
                     if parsed.get("status") == "failed":
                         await status_msg.edit(f"❌ **Failed**\n\n{current_content}", parse_mode="markdown")
                     else:
