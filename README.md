@@ -1,6 +1,6 @@
 # cc-nim
 
-Use **Claude Code CLI for free** with NVIDIA NIM's free unlimited 40 reqs/min API. This lightweight proxy converts Claude Code's Anthropic API requests to NVIDIA NIM format.
+Use **Claude Code CLI for free** with NVIDIA NIM's free unlimited 40 reqs/min API. This lightweight proxy converts Claude Code's Anthropic API requests to NVIDIA NIM format. **Includes Telegram bot integration** for remote control from your phone!
 
 ## Quick Start
 
@@ -27,7 +27,9 @@ BIG_MODEL=moonshotai/kimi-k2-instruct
 SMALL_MODEL=moonshotai/kimi-k2-instruct
 ```
 
-### 3. Run (Terminal Mode)
+---
+
+### Claude Code
 
 **Terminal 1 - Start the proxy:**
 
@@ -45,11 +47,11 @@ That's it! Claude Code now uses NVIDIA NIM for free.
 
 ---
 
-## Telegram Bot Integration
+### Telegram Bot Integration
 
 Control Claude Code remotely via Telegram! Send tasks from your phone and watch Claude work.
 
-### Setup
+#### Setup
 
 1. **Get Telegram API credentials** from [my.telegram.org](https://my.telegram.org):
    - Log in with your phone number
@@ -83,7 +85,7 @@ uv run uvicorn server:app --host 0.0.0.0 --port 8082
    - The server will prompt for your phone number and code
    - This creates a `claude_bot.session` file for future runs
 
-### Usage
+#### Usage
 
 - **Send a message** to yourself on Telegram with a task
 - Claude will respond with:
