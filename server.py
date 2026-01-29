@@ -237,6 +237,9 @@ def get_provider() -> NvidiaNimProvider:
 # FastAPI App
 # =============================================================================
 
+# Internal storage path for bot data (sessions, etc.) - defined early for lifespan
+INTERNAL_DATA_PATH = os.path.abspath(os.getenv("CLAUDE_WORKSPACE", "agent_workspace"))
+
 tele_client: Optional["TelegramClient"] = None
 
 
@@ -248,7 +251,7 @@ async def lifespan(app: FastAPI):
         api_hash = os.getenv("TELEGRAM_API_HASH")
         if TelegramClient and api_id and api_hash:
             logger.info("Starting Telegram Bot...")
-            session_path = os.path.join(WORKSPACE_PATH, "claude_bot.session")
+            session_path = os.path.join(INTERNAL_DATA_PATH, "claude_bot.session")
             tele_client = TelegramClient(session_path, int(api_id), api_hash)
 
             # Register handlers BEFORE starting
@@ -282,37 +285,36 @@ async def lifespan(app: FastAPI):
 # Telegram Bot & CLI Configuration
 # =============================================================================
 
-WORKSPACE_PATH = os.path.abspath(os.getenv("CLAUDE_WORKSPACE", "agent_workspace"))
-ALLOWED_DIRS = []
-raw_dirs = os.getenv("ALLOWED_DIRS", "")
-if raw_dirs:
+# The working directory where Claude CLI runs (user's project)
+ALLOWED_DIR = os.getenv("ALLOWED_DIR", "")
+if ALLOWED_DIR:
     # Handle Windows backslash corrosion (\a, \b etc) by replacing them
-    for d in raw_dirs.split(","):
-        d = d.strip()
-        if not d:
-            continue
-        # If it looks like a Windows path with corrupted escapes, try to fix
-        fixed = (
-            d.replace("\a", "\\a")
-            .replace("\b", "\\b")
-            .replace("\f", "\\f")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-            .replace("\v", "\\v")
-        )
-        ALLOWED_DIRS.append(os.path.normpath(fixed))
+    ALLOWED_DIR = (
+        ALLOWED_DIR.replace("\a", "\\a")
+        .replace("\b", "\\b")
+        .replace("\f", "\\f")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("\v", "\\v")
+    )
+    CLI_WORKSPACE = os.path.abspath(os.path.normpath(ALLOWED_DIR))
+else:
+    # Fallback to internal data path if no ALLOWED_DIR specified
+    CLI_WORKSPACE = INTERNAL_DATA_PATH
+
 # Internal URL for the CLI to use (points to this server)
 INTERNAL_API_URL = "http://localhost:8082/v1"
 
 # Initialize Global Instances
-cli_session = CLISession(WORKSPACE_PATH, INTERNAL_API_URL, ALLOWED_DIRS)
+# CLI runs in CLI_WORKSPACE (user's project), but we still pass it as allowed dir
+cli_session = CLISession(CLI_WORKSPACE, INTERNAL_API_URL, [CLI_WORKSPACE])
 
-# Session storage and message queue (imported from providers)
+# Session storage and message queue (stored in internal data path, not user's project)
 from providers.session_store import SessionStore
 from providers.message_queue import MessageQueueManager, QueuedMessage
 
-session_store = SessionStore(os.path.join(WORKSPACE_PATH, "sessions.json"))
+session_store = SessionStore(os.path.join(INTERNAL_DATA_PATH, "sessions.json"))
 message_queue = MessageQueueManager()
 
 
@@ -320,7 +322,7 @@ def register_bot_handlers(client: "TelegramClient"):
     ALLOWED_USER_ID = os.getenv("ALLOWED_TELEGRAM_USER_ID")
     logger.info(f"DEBUG: Registering bot handlers. Allowed user ID: {ALLOWED_USER_ID}")
 
-    async def process_claude_task(session_id_to_resume: str, queued_msg: QueuedMessage):
+    async def process_claude_task(session_id_to_resume: Optional[str], queued_msg: QueuedMessage):
         """
         Core task processor - handles a single Claude CLI interaction.
         Can be called directly or by the queue manager.
