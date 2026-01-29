@@ -202,33 +202,40 @@ class CLISession:
                     return
 
                 session_id_extracted = False
+                buffer = bytearray()
 
                 while True:
-                    line = await self.process.stdout.readline()
-                    if not line:
+                    # Read in chunks to handle extremely long lines (bypass 64KB limit)
+                    chunk = await self.process.stdout.read(65536)
+                    if not chunk:
+                        # End of stream, process any remaining data in buffer
+                        if buffer:
+                            line_str = buffer.decode("utf-8", errors="replace").strip()
+                            if line_str:
+                                async for result_event in self._handle_line_gen(line_str, session_id_extracted):
+                                    if result_event.get("type") == "session_info":
+                                        session_id_extracted = True
+                                    yield result_event
                         break
 
-                    line_str = line.decode("utf-8", errors="replace").strip()
-                    if not line_str:
-                        continue
-
-                    try:
-                        event = json.loads(line_str)
+                    buffer.extend(chunk)
+                    
+                    # Split buffer by newlines and process complete lines
+                    while True:
+                        newline_pos = buffer.find(b"\n")
+                        if newline_pos == -1:
+                            break
                         
-                        # Extract session ID from various event types
-                        if not session_id_extracted:
-                            extracted_id = self._extract_session_id(event)
-                            if extracted_id:
-                                self.current_session_id = extracted_id
-                                session_id_extracted = True
-                                logger.info(f"Extracted session ID: {extracted_id}")
-                                # Emit a special event with the session ID
-                                yield {"type": "session_info", "session_id": extracted_id}
+                        line = buffer[:newline_pos]
+                        buffer = buffer[newline_pos + 1:]
                         
-                        yield event
-                    except json.JSONDecodeError:
-                        logger.debug(f"Non-JSON output: {line_str}")
-                        yield {"type": "raw", "content": line_str}
+                        line_str = line.decode("utf-8", errors="replace").strip()
+                        if line_str:
+                            # Handle line and update extraction status
+                            async for result_event in self._handle_line_gen(line_str, session_id_extracted):
+                                if result_event.get("type") == "session_info":
+                                    session_id_extracted = True
+                                yield result_event
 
                 if self.process.stderr:
                     stderr_output = await self.process.stderr.read()
@@ -242,6 +249,24 @@ class CLISession:
                 yield {"type": "exit", "code": return_code}
             finally:
                 self._is_busy = False
+
+    async def _handle_line_gen(self, line_str: str, session_id_extracted: bool) -> AsyncGenerator[dict, None]:
+        """Process a single line and yield events."""
+        try:
+            event = json.loads(line_str)
+            # Extract session ID from various event types
+            if not session_id_extracted:
+                extracted_id = self._extract_session_id(event)
+                if extracted_id:
+                    self.current_session_id = extracted_id
+                    logger.info(f"Extracted session ID: {extracted_id}")
+                    # Emit a special event with the session ID
+                    yield {"type": "session_info", "session_id": extracted_id}
+            
+            yield event
+        except json.JSONDecodeError:
+            logger.debug(f"Non-JSON output: {line_str}")
+            yield {"type": "raw", "content": line_str}
 
     def _extract_session_id(self, event: Dict) -> Optional[str]:
         """

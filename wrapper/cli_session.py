@@ -67,23 +67,38 @@ class CLISession:
             env=env,
         )
 
-        # Read stdout line by line
+        # Read stdout in chunks to handle long lines
+        buffer = bytearray()
         while True:
-            line = await self.process.stdout.readline()
-            if not line:
+            chunk = await self.process.stdout.read(65536)
+            if not chunk:
+                if buffer:
+                    line_str = buffer.decode("utf-8", errors="replace").strip()
+                    if line_str:
+                        async for event in self._handle_line_gen(line_str):
+                            yield event
                 break
 
-            line_str = line.decode("utf-8").strip()
-            if not line_str:
-                continue
+            buffer.extend(chunk)
+            while True:
+                newline_pos = buffer.find(b"\n")
+                if newline_pos == -1:
+                    break
+                line = buffer[:newline_pos]
+                buffer = buffer[newline_pos + 1:]
+                line_str = line.decode("utf-8", errors="replace").strip()
+                if line_str:
+                    async for event in self._handle_line_gen(line_str):
+                        yield event
 
-            try:
-                event = json.loads(line_str)
-                yield event
-            except json.JSONDecodeError:
-                # Log non-JSON lines for debugging but don't crash
-                logger.debug(f"Non-JSON output: {line_str}")
-                yield {"type": "raw", "content": line_str}
+    async def _handle_line_gen(self, line_str: str) -> AsyncGenerator[dict, None]:
+        try:
+            event = json.loads(line_str)
+            yield event
+        except json.JSONDecodeError:
+            # Log non-JSON lines for debugging but don't crash
+            logger.debug(f"Non-JSON output: {line_str}")
+            yield {"type": "raw", "content": line_str}
 
         # Capture remaining stderr if the process crashed
         stderr_output = await self.process.stderr.read()
