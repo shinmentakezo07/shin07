@@ -26,7 +26,7 @@ NVIDIA_NIM_API_KEY=nvapi-your-key-here
 BIG_MODEL=moonshotai/kimi-k2-instruct
 SMALL_MODEL=moonshotai/kimi-k2-instruct
 ```
-Set to Sonnet to use `BIG_MODEL` and a and Haiku to use `SMALL_MODEL` 
+Set Claude-Code to Sonnet for `BIG_MODEL` and Haiku for `SMALL_MODEL` 
 
 ---
 
