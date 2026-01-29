@@ -30,10 +30,11 @@ from providers.cli_session_manager import CLISessionManager
 
 # Optional: telethon for the bot
 try:
-    from telethon import TelegramClient, events
+    from telethon import TelegramClient, events, errors
 except ImportError:
     TelegramClient = None
     events = None
+    errors = None
 
 # Initialize tokenizer
 ENCODER = tiktoken.get_encoding("cl100k_base")
@@ -328,6 +329,9 @@ def register_bot_handlers(client: "TelegramClient"):
     ALLOWED_USER_ID = os.getenv("ALLOWED_TELEGRAM_USER_ID")
     logger.info(f"DEBUG: Registering bot handlers. Allowed user ID: {ALLOWED_USER_ID}")
 
+    # Global flood wait state (shared across all bot tasks)
+    global_flood_wait_until = 0
+
     async def send_error_to_user(chat_id: int, error_msg: str, context: str = ""):
         """Send a formatted error message to the user."""
         try:
@@ -339,7 +343,9 @@ def register_bot_handlers(client: "TelegramClient"):
         except Exception as e:
             logger.error(f"Failed to send error to user: {e}")
 
-    async def process_claude_task(session_id_to_resume: Optional[str], queued_msg: QueuedMessage):
+    async def process_claude_task(
+        session_id_to_resume: Optional[str], queued_msg: QueuedMessage
+    ):
         """
         Core task processor - handles a single Claude CLI interaction.
         Now uses CLISessionManager for multi-instance support.
@@ -348,7 +354,7 @@ def register_bot_handlers(client: "TelegramClient"):
         status_msg_id = queued_msg.reply_msg_id
         chat_id = queued_msg.chat_id
         original_msg_id = queued_msg.msg_id
-        
+
         # Get the status message object
         try:
             status_msg = await client.get_messages(chat_id, ids=status_msg_id)
@@ -363,20 +369,21 @@ def register_bot_handlers(client: "TelegramClient"):
         captured_session_id = session_id_to_resume
         temp_session_id = None  # Track temp ID for new sessions
         cli_session = None  # The CLISession instance for this task
+        flood_alert_sent = False  # Track if we briefed the user about flood
 
         def safe_markdown_truncate(text, limit=3800):
             """Truncate text carefully to avoid breaking markdown entities or blocks."""
             if len(text) <= limit:
                 return text
-            
+
             # Show the end of the content as it's usually the most relevant
-            truncated = "..." + text[-(limit-5):]
-            
+            truncated = "..." + text[-(limit - 5) :]
+
             # Simple check for unclosed code blocks
             # This is a heuristic but covers common CLI output issues
             if truncated.count("```") % 2 != 0:
                 truncated += "\n```"
-                
+
             return truncated
 
         def build_unified_message(status=None):
@@ -384,10 +391,12 @@ def register_bot_handlers(client: "TelegramClient"):
             if status:
                 lines.append(status)
                 lines.append("")
-            
+
             for part_type, content in message_parts:
                 if part_type == "thinking":
-                    display_thinking = content[:1200] + ("..." if len(content) > 1200 else "")
+                    display_thinking = content[:1200] + (
+                        "..." if len(content) > 1200 else ""
+                    )
                     lines.append(f"💭 **Thinking:**\n```\n{display_thinking}\n```")
                 elif part_type == "tool":
                     lines.append(f"🔧 **Tools:** `{content}`")
@@ -397,36 +406,79 @@ def register_bot_handlers(client: "TelegramClient"):
                     lines.append(content)
                 elif part_type == "error":
                     lines.append(f"⚠️ {content}")
-            
+
             result = "\n".join(lines)
             return safe_markdown_truncate(result)
 
         async def update_bot_ui(status=None, force=False):
-            nonlocal last_ui_update
+            nonlocal last_ui_update, global_flood_wait_until, flood_alert_sent
             now = time.time()
-            if not force and now - last_ui_update < 0.8:
+
+            # 1. Check if we're in a global flood wait
+            if now < global_flood_wait_until:
+                # If forced, we check if it's been a while since we logged the skip
+                if force and now - last_ui_update > 5:
+                    logger.warning(
+                        f"BOT: Skipping UI update due to active FloodWait ({int(global_flood_wait_until - now)}s remaining)"
+                    )
                 return
+
+            # Reset alert flag when we are out of wait
+            flood_alert_sent = False
+
+            if not force and now - last_ui_update < 1.0:
+                return
+
             try:
                 display = build_unified_message(status)
                 if display:
                     await status_msg.edit(display, parse_mode="markdown")
                     last_ui_update = now
+            except errors.FloodWaitError as e:
+                # Telegram specific flood wait
+                wait_time = e.seconds
+                global_flood_wait_until = now + wait_time
+                logger.error(
+                    f"BOT: UI update hit rate limit. Waiting for {wait_time}s. Exception: {e}"
+                )
+
+                # Try to alert the user once if the wait is long
+                if wait_time > 10 and not flood_alert_sent:
+                    try:
+                        await client.send_message(
+                            chat_id,
+                            f"⏳ **Telegram rate limit hit.**\nUI updates will pause for {wait_time}s. Claude is still working in the background.",
+                            reply_to=original_msg_id,
+                        )
+                        flood_alert_sent = True
+                    except:
+                        pass
             except Exception as e:
                 logger.error(f"BOT: UI update failed: {e}")
 
         try:
             # Get or create CLI session from the manager
             is_resume = session_id_to_resume is not None
-            log_prefix = f"Resuming session {session_id_to_resume}" if is_resume else "Starting new session"
+            log_prefix = (
+                f"Resuming session {session_id_to_resume}"
+                if is_resume
+                else "Starting new session"
+            )
             logger.info(f"BOT: {log_prefix} for prompt: {prompt[:50]}...")
 
             try:
-                cli_session, session_or_temp_id, is_new = await cli_session_manager.get_or_create_session(
+                (
+                    cli_session,
+                    session_or_temp_id,
+                    is_new,
+                ) = await cli_session_manager.get_or_create_session(
                     session_id=session_id_to_resume
                 )
                 if is_new:
                     temp_session_id = session_or_temp_id
-                    logger.info(f"BOT: Created new CLI session with temp_id: {temp_session_id}")
+                    logger.info(
+                        f"BOT: Created new CLI session with temp_id: {temp_session_id}"
+                    )
                 else:
                     captured_session_id = session_or_temp_id
                     logger.info(f"BOT: Reusing CLI session: {captured_session_id}")
@@ -442,7 +494,9 @@ def register_bot_handlers(client: "TelegramClient"):
                 return
 
             # Process CLI events
-            async for event_data in cli_session.start_task(prompt, session_id=captured_session_id):
+            async for event_data in cli_session.start_task(
+                prompt, session_id=captured_session_id
+            ):
                 if not isinstance(event_data, dict):
                     continue
 
@@ -461,7 +515,9 @@ def register_bot_handlers(client: "TelegramClient"):
                             chat_id=chat_id,
                             initial_msg_id=original_msg_id,
                         )
-                        logger.info(f"BOT: Registered session {temp_session_id} -> {real_session_id}")
+                        logger.info(
+                            f"BOT: Registered session {temp_session_id} -> {real_session_id}"
+                        )
                     continue
 
                 parsed = CLIParser.parse_event(event_data)
@@ -471,7 +527,10 @@ def register_bot_handlers(client: "TelegramClient"):
                     if not raw_line:
                         continue
                     if "login" in raw_line.lower():
-                        await client.send_message(chat_id, "⚠️ **Claude requires login. Run `claude` in terminal.**")
+                        await client.send_message(
+                            chat_id,
+                            "⚠️ **Claude requires login. Run `claude` in terminal.**",
+                        )
                     elif "error" in raw_line.lower():
                         message_parts.append(("error", raw_line[:200]))
                     continue
@@ -490,54 +549,66 @@ def register_bot_handlers(client: "TelegramClient"):
                         logger.debug(f"BOT: Got thinking: {len(thinking_text)} chars")
                         message_parts.append(("thinking", thinking_text))
                     if parsed.get("text"):
-                        logger.debug(f"BOT: Got text content: {len(parsed['text'])} chars")
+                        logger.debug(
+                            f"BOT: Got text content: {len(parsed['text'])} chars"
+                        )
                         if message_parts and message_parts[-1][0] == "content":
                             prev_type, prev_content = message_parts[-1]
-                            message_parts[-1] = ("content", prev_content + parsed["text"])
+                            message_parts[-1] = (
+                                "content",
+                                prev_content + parsed["text"],
+                            )
                         else:
                             message_parts.append(("content", parsed["text"]))
                         await update_bot_ui("🧠 **Claude is working...**")
-                
+
                 elif parsed["type"] == "tool_start":
                     names = [t.get("name") for t in parsed["tools"]]
                     message_parts.append(("tool", ", ".join(names)))
                     await update_bot_ui("⏳ **Executing tools...**")
-                
+
                 elif parsed["type"] == "subagent_start":
                     tasks = parsed["tasks"]
                     message_parts.append(("subagent", ", ".join(tasks)))
                     await update_bot_ui("🔎 **Subagent working...**")
 
                 elif parsed["type"] == "complete":
-                    logger.debug(f"BOT: Complete event, parts count: {len(message_parts)}")
+                    logger.debug(
+                        f"BOT: Complete event, parts count: {len(message_parts)}"
+                    )
                     if parsed.get("status") == "failed":
                         await update_bot_ui("❌ **Failed**", force=True)
                     else:
                         if not message_parts:
                             message_parts.append(("content", "Done."))
                         await update_bot_ui("✅ **Complete**", force=True)
-                    
+
                     # Update session's last message so replies to THIS response also work
                     if captured_session_id and status_msg:
-                        session_store.update_last_message(captured_session_id, status_msg.id)
-                
+                        session_store.update_last_message(
+                            captured_session_id, status_msg.id
+                        )
+
                 elif parsed["type"] == "error":
                     error_msg = parsed.get("message", "Unknown error")
                     message_parts.append(("error", f"**CLI Error:** {error_msg}"))
                     await update_bot_ui("❌ **Error**", force=True)
 
         except asyncio.CancelledError:
-            logger.info(f"BOT: Task cancelled for session {captured_session_id or temp_session_id}")
+            logger.info(
+                f"BOT: Task cancelled for session {captured_session_id or temp_session_id}"
+            )
             message_parts.append(("error", "Task was cancelled"))
             await update_bot_ui("❌ **Failed**", force=True)
         except Exception as e:
             import traceback
+
             logger.error(f"Bot task failed: {e}\n{traceback.format_exc()}")
             try:
                 error_text = str(e)[:300]
                 await status_msg.edit(
                     f"💥 **Task Failed**\n\n```\n{error_text}\n```",
-                    parse_mode="markdown"
+                    parse_mode="markdown",
                 )
             except:
                 await send_error_to_user(chat_id, str(e), "task execution")
@@ -552,29 +623,35 @@ def register_bot_handlers(client: "TelegramClient"):
         if sender_id != target_id:
             logger.debug(f"BOT_SECURITY: Ignored message from {sender_id}")
             return
-        
+
         # 1. Handle Commands
         if event.text == "/stop":
             # 1. Cancel all queued and running messages in the message queue
             cancelled_msgs = await message_queue.cancel_all()
-            
+
             # 2. Stop all CLI sessions (subprocesses)
             await cli_session_manager.stop_all()
-            
+
             # 3. Inform the user and update status of cancelled messages
             await event.reply("⏹ **All Claude sessions stopped.**")
-            
+
             for msg in cancelled_msgs:
                 try:
-                    # We might not be able to edit if it's too old or already done, 
+                    # We might not be able to edit if it's too old or already done,
                     # but we try to mark them as failed as requested.
-                    status_msg = await client.get_messages(msg.chat_id, ids=msg.reply_msg_id)
+                    status_msg = await client.get_messages(
+                        msg.chat_id, ids=msg.reply_msg_id
+                    )
                     if status_msg:
-                        await status_msg.edit("❌ **Failed** (Stopped by user)", parse_mode="markdown")
+                        await status_msg.edit(
+                            "❌ **Failed** (Stopped by user)", parse_mode="markdown"
+                        )
                 except Exception as e:
-                    logger.debug(f"Could not update status for cancelled msg {msg.msg_id}: {e}")
+                    logger.debug(
+                        f"Could not update status for cancelled msg {msg.msg_id}: {e}"
+                    )
             return
-        
+
         if event.text == "/stats":
             stats = cli_session_manager.get_stats()
             await event.reply(
@@ -585,7 +662,7 @@ def register_bot_handlers(client: "TelegramClient"):
                 f"• Max: {stats['max_sessions']}"
             )
             return
-        
+
         if event.text == "/queue":
             stats = cli_session_manager.get_stats()
             await event.reply(
@@ -594,41 +671,54 @@ def register_bot_handlers(client: "TelegramClient"):
                 f"Reply to old messages to continue conversations."
             )
             return
-            
+
         # 2. Filter out bot's own status messages and empty text
-        if not event.text or any(event.text.startswith(p) for p in ["⏳", "💭", "🔧", "✅", "❌", "🚀", "🤖", "📋", "📊", "🔄"]):
+        if not event.text or any(
+            event.text.startswith(p)
+            for p in ["⏳", "💭", "🔧", "✅", "❌", "🚀", "🤖", "📋", "📊", "🔄"]
+        ):
             return
 
         logger.info(f"BOT_TASK: {event.text}")
-        
+
         # 3. Check if this is a reply to an existing conversation
         session_id_to_resume = None
         reply_to_msg_id = event.reply_to_msg_id
-        
+
         if reply_to_msg_id:
             # User is replying to a previous message - try to find the session
-            session_id_to_resume = session_store.get_session_by_msg(event.chat_id, reply_to_msg_id)
+            session_id_to_resume = session_store.get_session_by_msg(
+                event.chat_id, reply_to_msg_id
+            )
             if session_id_to_resume:
-                logger.info(f"BOT: Found session {session_id_to_resume} for reply to msg {reply_to_msg_id}")
+                logger.info(
+                    f"BOT: Found session {session_id_to_resume} for reply to msg {reply_to_msg_id}"
+                )
             else:
-                logger.info(f"BOT: No session found for reply to msg {reply_to_msg_id}, starting new session")
+                logger.info(
+                    f"BOT: No session found for reply to msg {reply_to_msg_id}, starting new session"
+                )
 
         # 4. Send initial status message
         try:
             if session_id_to_resume:
                 if message_queue.is_session_busy(session_id_to_resume):
                     queue_size = message_queue.get_queue_size(session_id_to_resume) + 1
-                    status_msg = await event.reply(f"📋 **Queued** (position {queue_size}) - waiting for previous request...")
+                    status_msg = await event.reply(
+                        f"📋 **Queued** (position {queue_size}) - waiting for previous request..."
+                    )
                 else:
                     status_msg = await event.reply("🔄 **Continuing conversation...**")
             else:
                 stats = cli_session_manager.get_stats()
-                if stats['active_sessions'] >= stats['max_sessions']:
+                if stats["active_sessions"] >= stats["max_sessions"]:
                     status_msg = await event.reply(
                         f"⏳ **Waiting for slot...** ({stats['active_sessions']}/{stats['max_sessions']} sessions active)"
                     )
                 else:
-                    status_msg = await event.reply("⏳ **Launching new Claude CLI instance...**")
+                    status_msg = await event.reply(
+                        "⏳ **Launching new Claude CLI instance...**"
+                    )
         except Exception as e:
             logger.error(f"Failed to send status message: {e}")
             return
@@ -662,16 +752,16 @@ def register_bot_handlers(client: "TelegramClient"):
             # NEW session - create a temporary ID based on the trigger message
             temp_session_id = f"pending_{event.id}"
             logger.info(f"BOT: Starting NEW session {temp_session_id}")
-            
+
             # Pre-register in session store so replies to this NEW message or its status
             # can be identified and enqueued immediately.
             session_store.save_session(
                 session_id=temp_session_id,
                 chat_id=event.chat_id,
-                initial_msg_id=event.id
+                initial_msg_id=event.id,
             )
             session_store.update_last_message(temp_session_id, status_msg.id)
-            
+
             # Process via queue to ensure we track busy state even for new sessions
             await message_queue.enqueue(
                 session_id=temp_session_id,
@@ -967,8 +1057,8 @@ async def health():
 
 @app.post("/stop")
 async def stop_cli():
-    stopped = await cli_session.stop()
-    return {"status": "terminated" if stopped else "no_active_process"}
+    await cli_session_manager.stop_all()
+    return {"status": "terminated"}
 
 
 if __name__ == "__main__":
