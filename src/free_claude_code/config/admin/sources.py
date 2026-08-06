@@ -14,7 +14,7 @@ from free_claude_code.config.env_files import (
     repo_env_path as configured_repo_env_path,
 )
 from free_claude_code.config.env_files import (
-    settings_env_files,
+    runtime_env_files,
 )
 from free_claude_code.config.env_template import load_env_template_or_empty
 
@@ -24,7 +24,6 @@ SourceType = Literal[
     "default",
     "template",
     "repo_env",
-    "managed_env",
     "explicit_env_file",
     "process",
 ]
@@ -47,10 +46,9 @@ def configured_env_files() -> tuple[tuple[SourceType, Path], ...]:
 
     source_names: tuple[SourceType, ...] = (
         "repo_env",
-        "managed_env",
         "explicit_env_file",
     )
-    return tuple(zip(source_names, settings_env_files(), strict=False))
+    return tuple(zip(source_names, runtime_env_files(), strict=False))
 
 
 def dotenv_values_from_text(text: str) -> dict[str, str]:

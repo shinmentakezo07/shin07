@@ -40,7 +40,6 @@ function sourceLabel(source) {
     default: "default",
     template: "template",
     repo_env: "repo .env",
-    managed_env: "",
     explicit_env_file: "FCC_ENV_FILE",
     process: "process env",
   };

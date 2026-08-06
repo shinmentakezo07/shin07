@@ -315,10 +315,13 @@ model-ref parsing, launcher defaults, or web-tool policy. Dotenv discovery lives
 in [config/env_files.py](src/free_claude_code/config/env_files.py) and uses this order:
 
 1. repo-local `.env`;
-2. managed `~/.fcc/.env`;
-3. optional `FCC_ENV_FILE`, appended when present.
+2. optional `FCC_ENV_FILE`, appended when present.
 
-Later dotenv files override earlier dotenv files. Process environment variables
+Later dotenv files override earlier dotenv files. The running server loads only
+these two files: `runtime_env_files()` excludes the user-managed `~/.fcc/.env`
+from Settings, so a codebase-local `.env` is always authoritative at load time.
+The managed file remains reserved for the Admin UI and legacy env migrations.
+Process environment variables
 also participate through Pydantic settings resolution. `ANTHROPIC_AUTH_TOKEN`
 has an extra guard after settings are built: if any configured dotenv file
 defines it, that dotenv value replaces a stale inherited shell token. Auth-token

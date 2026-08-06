@@ -10,7 +10,7 @@ from .constants import HTTP_CONNECT_TIMEOUT_DEFAULT
 from .env_files import (
     ANTHROPIC_AUTH_TOKEN_ENV,
     env_file_override,
-    settings_env_files,
+    runtime_env_files,
 )
 from .nim import NimSettings
 from .provider_catalog import BEDROCK_DEFAULT_BASE, SUPPORTED_PROVIDER_IDS
@@ -459,7 +459,7 @@ class Settings(BaseSettings):
         return self
 
     model_config = SettingsConfigDict(
-        env_file=settings_env_files(),
+        env_file=runtime_env_files(),
         env_file_encoding="utf-8",
         extra="ignore",
     )

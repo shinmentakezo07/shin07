@@ -565,6 +565,48 @@ class TestSettings:
             is False
         )
 
+    def test_codebase_env_overrides_managed_env(self, monkeypatch, tmp_path):
+        """The running server prefers the codebase .env over ~/.fcc/.env."""
+        from free_claude_code.config.env_files import runtime_env_files
+        from free_claude_code.config.settings import Settings
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".env").write_text(
+            'ANTHROPIC_AUTH_TOKEN="repo-token"\n', encoding="utf-8"
+        )
+
+        managed = tmp_path / ".fcc" / ".env"
+        managed.parent.mkdir(parents=True)
+        managed.write_text('ANTHROPIC_AUTH_TOKEN="managed-token"\n', encoding="utf-8")
+
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.setitem(Settings.model_config, "env_file", runtime_env_files())
+
+        settings = Settings()
+        assert settings.anthropic_auth_token == "repo-token"
+
+    def test_codebase_env_loaded_when_managed_absent(self, monkeypatch, tmp_path):
+        """The running server loads the codebase .env with no ~/.fcc/.env."""
+        from free_claude_code.config.env_files import runtime_env_files
+        from free_claude_code.config.settings import Settings
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".env").write_text(
+            'ANTHROPIC_AUTH_TOKEN="repo-token"\n', encoding="utf-8"
+        )
+        monkeypatch.chdir(repo)
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+        monkeypatch.setitem(Settings.model_config, "env_file", runtime_env_files())
+
+        settings = Settings()
+        assert settings.anthropic_auth_token == "repo-token"
+
     @pytest.mark.parametrize("removed_key", ["NIM_ENABLE_THINKING", "ENABLE_THINKING"])
     def test_removed_thinking_env_keys_are_ignored(self, monkeypatch, removed_key):
         """Stale thinking env keys do not block startup or affect settings."""

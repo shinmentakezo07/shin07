@@ -3,8 +3,6 @@
 import os
 from typing import Any
 
-from free_claude_code.config.paths import managed_env_path
-
 from .manifest import (
     FIELD_BY_KEY,
     FIELDS,
@@ -118,7 +116,7 @@ def load_config_response() -> dict[str, Any]:
         ],
         "fields": fields,
         "paths": {
-            "managed": str(managed_env_path()),
+            "managed": str(repo_env_path()),
             "repo": str(repo_env_path()),
             "explicit": str(explicit_env_path()) if explicit_env_path() else None,
         },

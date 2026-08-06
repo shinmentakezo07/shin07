@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from free_claude_code.config.paths import managed_env_path
+from free_claude_code.config.env_files import repo_env_path
 from free_claude_code.config.settings import Settings
 
 from .manifest import FIELD_BY_KEY, FIELDS, SECTIONS, ConfigFieldSpec
@@ -61,13 +61,11 @@ def target_values_with_updates(updates: Mapping[str, Any]) -> dict[str, str]:
     state = load_value_state()
     values = template_values()
 
-    # Preserve existing managed values when present. If no managed config exists,
+    # Preserve existing repo values when present. If no repo config exists,
     # seed the first write from effective repo values to migrate legacy setups.
-    managed_values = dotenv_values_from_file(managed_env_path())
-    if managed_values:
-        values.update(
-            {key: val for key, val in managed_values.items() if key in values}
-        )
+    repo_values = dotenv_values_from_file(repo_env_path())
+    if repo_values:
+        values.update({key: val for key, val in repo_values.items() if key in values})
     else:
         for key, entry in state.items():
             if entry["source"] in {"repo_env", "template", "default"}:
@@ -156,7 +154,7 @@ def prepare_admin_update(updates: Mapping[str, Any]) -> PreparedAdminUpdate:
         settings=settings,
         errors=tuple(errors),
         pending_fields=pending_fields,
-        path=managed_env_path(),
+        path=repo_env_path(),
     )
 
 

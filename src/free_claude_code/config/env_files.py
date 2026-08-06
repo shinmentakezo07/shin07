@@ -39,6 +39,21 @@ def settings_env_files(env: Mapping[str, str] | None = None) -> tuple[Path, ...]
     return tuple(files)
 
 
+def runtime_env_files(env: Mapping[str, str] | None = None) -> tuple[Path, ...]:
+    """Return Settings dotenv files, excluding the user-managed ~/.fcc/.env.
+
+    The running server reads only the codebase ``.env`` (plus an explicit
+    ``FCC_ENV_FILE`` override). The user-managed file stays reserved for the
+    Admin UI and legacy migrations, so a codebase-local ``.env`` is always
+    authoritative at load time.
+    """
+
+    files: list[Path] = [repo_env_path()]
+    if explicit := explicit_env_path(env):
+        files.append(explicit)
+    return tuple(files)
+
+
 def configured_env_files(model_config: Mapping[str, Any]) -> tuple[Path, ...]:
     """Return the env files currently configured for a Settings model."""
 
