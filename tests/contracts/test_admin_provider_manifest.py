@@ -228,3 +228,43 @@ def test_openai_compatible_admin_status_distinguishes_key_and_url() -> None:
         )["status"]
         == "configured"
     )
+
+
+def test_openai_compatible_instances_field_in_manifest() -> None:
+    entry = FIELD_BY_KEY["OPENAI_COMPATIBLE_INSTANCES"]
+
+    assert entry.settings_attr == "openai_compatible_instances"
+    assert entry.field_type == "instances"
+    assert entry.section_id == "providers"
+    assert entry.default == "[]"
+    assert entry.secret is False
+
+
+def test_openai_compatible_instance_status_entries_numbered() -> None:
+    from free_claude_code.config.admin.status import provider_config_status
+
+    state = {
+        "OPENAI_COMPATIBLE_INSTANCES": {
+            "value": (
+                '[{"base_url": "https://a.example/v1", "api_keys": "k1"}, '
+                '{"base_url": ""}]'
+            )
+        },
+        "OPENAI_COMPATIBLE_API_KEY": {"value": ""},
+        "OPENAI_COMPATIBLE_BASE_URL": {"value": ""},
+    }
+    statuses = provider_config_status(state)
+    by_provider = {entry["provider_id"]: entry for entry in statuses}
+
+    # Numbered instances replace the single legacy endpoint status entry.
+    assert "openai_compatible" not in by_provider
+
+    assert by_provider["openai_compatible_1"]["status"] == "configured"
+    assert by_provider["openai_compatible_1"]["label"] == "Configured"
+    assert by_provider["openai_compatible_1"]["base_url"] == "https://a.example/v1"
+    assert by_provider["openai_compatible_1"]["display_name"] == (
+        "OpenAI-Compatible Endpoint #1"
+    )
+
+    assert by_provider["openai_compatible_2"]["status"] == "missing_config"
+    assert by_provider["openai_compatible_2"]["label"] == "Missing base URL"

@@ -637,6 +637,109 @@ class TestSettings:
         assert settings.reasoning_policy is ReasoningPreference.CLIENT
 
 
+class TestOpenAICompatibleInstances:
+    """Numbered OpenAI-compatible endpoint instances (OPENAI_COMPATIBLE_INSTANCES)."""
+
+    def test_instances_default_to_empty(self, monkeypatch):
+        """No instances configured by default."""
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.delenv("OPENAI_COMPATIBLE_INSTANCES", raising=False)
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+        assert Settings().openai_compatible_instances == ()
+
+    def test_instances_parse_json_array(self, monkeypatch):
+        """JSON array is decoded into OpenAICompatibleInstance entries."""
+        from free_claude_code.config.settings import (
+            OpenAICompatibleInstance,
+            Settings,
+        )
+
+        monkeypatch.setenv(
+            "OPENAI_COMPATIBLE_INSTANCES",
+            '[{"base_url": "https://a.example/v1", "api_keys": "k1, k2"}, '
+            '{"base_url": "https://b.example", "proxy": "http://p:8080"}]',
+        )
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+
+        instances = Settings().openai_compatible_instances
+
+        assert instances == (
+            OpenAICompatibleInstance(
+                base_url="https://a.example/v1", api_keys="k1, k2"
+            ),
+            OpenAICompatibleInstance(
+                base_url="https://b.example", proxy="http://p:8080"
+            ),
+        )
+
+    def test_instances_empty_json_array(self, monkeypatch):
+        """'[]' decodes to an empty tuple."""
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.setenv("OPENAI_COMPATIBLE_INSTANCES", "[]")
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+        assert Settings().openai_compatible_instances == ()
+
+    def test_instances_malformed_json_raises_from_env(self, monkeypatch):
+        """Malformed JSON in the env raises a clear SettingsError."""
+        from pydantic_settings.exceptions import SettingsError
+
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.setenv("OPENAI_COMPATIBLE_INSTANCES", "not-json")
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+
+        with pytest.raises(SettingsError, match="openai_compatible_instances"):
+            Settings()
+
+    def test_instances_malformed_json_raises_from_kwargs(self, monkeypatch):
+        """Malformed JSON passed as a kwarg raises a clear ValidationError."""
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.delenv("OPENAI_COMPATIBLE_INSTANCES", raising=False)
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+
+        with pytest.raises(ValidationError, match="OPENAI_COMPATIBLE_INSTANCES"):
+            Settings(OPENAI_COMPATIBLE_INSTANCES="not-json")
+
+    def test_model_accepts_numbered_instance_route(self, monkeypatch):
+        """MODEL may route to any configured instance number."""
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.setenv(
+            "OPENAI_COMPATIBLE_INSTANCES",
+            '[{"base_url": "https://a.example"}, {"base_url": "https://b.example"}]',
+        )
+        monkeypatch.setenv("MODEL", "openai_compatible_2/chat-model")
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+
+        settings = Settings()
+
+        assert settings.model == "openai_compatible_2/chat-model"
+
+    def test_model_rejects_out_of_range_instance_route(self, monkeypatch):
+        """MODEL referencing an unconfigured instance number raises."""
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.setenv(
+            "OPENAI_COMPATIBLE_INSTANCES", '[{"base_url": "https://a.example"}]'
+        )
+        monkeypatch.setenv("MODEL", "openai_compatible_3/chat-model")
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+
+        with pytest.raises(ValidationError, match="openai_compatible_3"):
+            Settings()
+
+    def test_model_route_to_legacy_single_endpoint_still_valid(self, monkeypatch):
+        """MODEL may use the bare openai_compatible route."""
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.setenv("MODEL", "openai_compatible/chat-model")
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+        assert Settings().model == "openai_compatible/chat-model"
+
+
 # --- NimSettings Validation Tests ---
 class TestNimSettingsValidBounds:
     """Test that valid values within bounds are accepted."""

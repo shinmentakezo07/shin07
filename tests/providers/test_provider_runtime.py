@@ -23,6 +23,7 @@ from free_claude_code.config.provider_catalog import (
     VERCEL_AI_GATEWAY_DEFAULT_BASE,
     ZAI_DEFAULT_BASE,
 )
+from free_claude_code.config.settings import OpenAICompatibleInstance
 from free_claude_code.providers.admission import ProviderAdmissionController
 from free_claude_code.providers.cloudflare import CloudflareProvider
 from free_claude_code.providers.deepseek import DeepSeekProvider
@@ -43,6 +44,9 @@ from free_claude_code.providers.runtime import (
     build_provider_config,
     create_provider,
 )
+from free_claude_code.providers.runtime.config import (
+    openai_compatible_instance_ids,
+)
 from free_claude_code.providers.vertex import VertexProvider
 
 
@@ -57,6 +61,7 @@ def _make_settings(**overrides):
     mock.azure_openai_base_url = "https://test-resource.openai.azure.com/openai/v1/"
     mock.openai_compatible_api_key = "test_openai_compatible_key"
     mock.openai_compatible_base_url = "https://my-gateway.example/v1"
+    mock.openai_compatible_instances = ()
     mock.nvidia_nim_api_key = "test_key"
     mock.open_router_api_key = "test_openrouter_key"
     mock.mistral_api_key = "test_mistral_key"
@@ -292,6 +297,109 @@ def test_create_openai_compatible_provider_normalizes_base_url_and_pools_keys() 
     assert provider._pool is not None
     assert provider._pool.size == 2
     assert client_cls.call_count == 2
+
+
+def test_openai_compatible_instance_ids_number_by_position() -> None:
+    settings = _make_settings(
+        openai_compatible_instances=(
+            OpenAICompatibleInstance(base_url="https://a.example/v1", api_keys="k1"),
+            OpenAICompatibleInstance(base_url="https://b.example", api_keys="k2, k3"),
+            OpenAICompatibleInstance(base_url=""),
+        )
+    )
+
+    assert openai_compatible_instance_ids(settings) == (
+        "openai_compatible_1",
+        "openai_compatible_2",
+    )
+
+
+def test_create_numbered_openai_compatible_instance_provider() -> None:
+    settings = _make_settings(
+        openai_compatible_instances=(
+            OpenAICompatibleInstance(base_url="https://a.example", api_keys="k1"),
+            OpenAICompatibleInstance(
+                base_url="https://b.example/v1", api_keys="k2, k3"
+            ),
+        )
+    )
+
+    with patch(
+        "free_claude_code.providers.openai_chat.provider.AsyncOpenAI"
+    ) as client_cls:
+        provider = create_provider("openai_compatible_2", settings)
+
+    assert isinstance(provider, OpenAIChatProvider)
+    assert provider._base_url == "https://b.example/v1"
+    assert provider._provider_name == "OPENAI_COMPATIBLE"
+    assert provider._pool is not None
+    assert provider._pool.size == 2
+    assert client_cls.call_count == 2
+
+
+def test_openai_compatible_alias_resolves_first_instance_when_present() -> None:
+    settings = _make_settings(
+        openai_compatible_instances=(
+            OpenAICompatibleInstance(base_url="https://a.example", api_keys="k1"),
+        )
+    )
+
+    with patch(
+        "free_claude_code.providers.openai_chat.provider.AsyncOpenAI"
+    ) as client_cls:
+        provider = create_provider("openai_compatible", settings)
+
+    assert isinstance(provider, OpenAIChatProvider)
+    assert provider._base_url == "https://a.example/v1"
+    assert provider._provider_name == "OPENAI_COMPATIBLE"
+    assert client_cls.call_count == 1
+
+
+def test_openai_compatible_instance_out_of_range_raises_unknown_provider() -> None:
+    settings = _make_settings(
+        openai_compatible_instances=(
+            OpenAICompatibleInstance(base_url="https://a.example", api_keys="k1"),
+        )
+    )
+
+    with pytest.raises(
+        UnknownProviderError,
+        match="Configured OpenAI-compatible instances: openai_compatible_1",
+    ):
+        create_provider("openai_compatible_2", settings)
+
+
+def test_openai_compatible_instance_without_base_url_raises_clear_error() -> None:
+    settings = _make_settings(
+        openai_compatible_instances=(
+            OpenAICompatibleInstance(base_url="https://a.example"),
+            OpenAICompatibleInstance(api_keys="k2"),
+        )
+    )
+
+    with pytest.raises(
+        UnknownProviderError,
+        match="'openai_compatible_2' has no base URL",
+    ):
+        create_provider("openai_compatible_2", settings)
+
+
+def test_model_cache_discovery_includes_numbered_instances() -> None:
+    from free_claude_code.providers.runtime.discovery import (
+        model_cache_provider_ids_for_settings,
+    )
+
+    settings = _make_settings(
+        openai_compatible_instances=(
+            OpenAICompatibleInstance(base_url="https://a.example"),
+            OpenAICompatibleInstance(base_url=""),
+        )
+    )
+
+    ids = model_cache_provider_ids_for_settings(settings)
+
+    assert "openai_compatible_1" in ids
+    assert "openai_compatible_2" not in ids
 
 
 @pytest.mark.parametrize(

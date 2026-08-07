@@ -1,5 +1,6 @@
 """Provider configuration status for the Admin UI."""
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -15,8 +16,13 @@ def provider_config_status(
     state: Mapping[str, Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     """Return provider configuration status without making network calls."""
+    instance_raw = str(state.get("OPENAI_COMPATIBLE_INSTANCES", {}).get("value", ""))
+    has_instances = _openai_compatible_instances_present(instance_raw)
     statuses: list[dict[str, Any]] = []
     for provider_id, descriptor in PROVIDER_CATALOG.items():
+        if provider_id == "openai_compatible" and has_instances:
+            # Numbered instances replace the single-endpoint status entry.
+            continue
         if descriptor.auth_kind is ProviderAuthKind.CONNECTED_ACCOUNT:
             statuses.append(
                 {
@@ -75,6 +81,48 @@ def provider_config_status(
                     else "Missing configuration"
                 ),
                 "configuration": configuration,
+            }
+        )
+    statuses.extend(_openai_compatible_instance_statuses(instance_raw))
+    return statuses
+
+
+def _openai_compatible_instances_present(raw: str) -> bool:
+    """Return whether a non-empty instances list is configured."""
+    if not raw.strip():
+        return False
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return False
+    return isinstance(parsed, list) and bool(parsed)
+
+
+def _openai_compatible_instance_statuses(raw: str) -> list[dict[str, Any]]:
+    """Return one status entry per numbered endpoint instance."""
+    if not raw.strip():
+        return []
+    try:
+        instances = json.loads(raw)
+    except ValueError:
+        return []
+    if not isinstance(instances, list):
+        return []
+    statuses: list[dict[str, Any]] = []
+    for index, instance in enumerate(instances, start=1):
+        if not isinstance(instance, dict):
+            continue
+        base_url = str(instance.get("base_url", "") or "")
+        configured = bool(base_url.strip())
+        statuses.append(
+            {
+                "provider_id": f"openai_compatible_{index}",
+                "display_name": f"OpenAI-Compatible Endpoint #{index}",
+                "kind": "remote",
+                "status": "configured" if configured else "missing_config",
+                "label": "Configured" if configured else "Missing base URL",
+                "base_url": base_url,
+                "configuration": "OPENAI_COMPATIBLE_BASE_URL",
             }
         )
     return statuses

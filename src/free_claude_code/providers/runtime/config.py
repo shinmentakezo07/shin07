@@ -1,9 +1,13 @@
 """Provider configuration construction from neutral catalog metadata."""
 
+import re
+
 from free_claude_code.application.errors import ApplicationUnavailableError
 from free_claude_code.config.provider_catalog import ProviderDescriptor
-from free_claude_code.config.settings import Settings
+from free_claude_code.config.settings import OpenAICompatibleInstance, Settings
 from free_claude_code.providers.base import ProviderConfig
+
+_OPENAI_COMPATIBLE_INSTANCE_RE = re.compile(r"openai_compatible_(\d+)")
 
 
 def string_setting(settings: Settings, attr_name: str | None, default: str = "") -> str:
@@ -87,6 +91,76 @@ def build_provider_config(
         http_write_timeout=settings.http_write_timeout,
         http_connect_timeout=settings.http_connect_timeout,
         proxy=proxy,
+        log_raw_sse_events=settings.log_raw_sse_events,
+        log_api_error_tracebacks=settings.log_api_error_tracebacks,
+    )
+
+
+def openai_compatible_instance_ids(settings: Settings) -> tuple[str, ...]:
+    """Return numbered provider ids for configured endpoint instances."""
+    return tuple(
+        f"openai_compatible_{index}"
+        for index, instance in enumerate(settings.openai_compatible_instances, start=1)
+        if instance.base_url.strip()
+    )
+
+
+def resolve_openai_compatible_instance(
+    provider_id: str, settings: Settings
+) -> tuple[OpenAICompatibleInstance | None, str | None]:
+    """Resolve a numbered OpenAI-compatible instance provider id.
+
+    Returns ``(instance, None)`` for a usable numbered id, ``(None, error)``
+    for a numbered id that is unknown or not yet configured, and ``(None, None)``
+    when the id is not an OpenAI-compatible instance id so callers can fall
+    back to the catalog.
+    """
+    instances = settings.openai_compatible_instances
+    if not isinstance(instances, tuple):
+        return None, None
+    if provider_id == "openai_compatible":
+        if instances and instances[0].base_url.strip():
+            return instances[0], None
+        return None, None
+    match = _OPENAI_COMPATIBLE_INSTANCE_RE.fullmatch(provider_id)
+    if match is None:
+        return None, None
+    index = int(match.group(1)) - 1
+    if index < 0 or index >= len(instances):
+        configured = ", ".join(openai_compatible_instance_ids(settings)) or "none"
+        return None, (
+            f"Unknown provider_type: '{provider_id}'. "
+            f"Configured OpenAI-compatible instances: {configured}"
+        )
+    instance = instances[index]
+    if not instance.base_url.strip():
+        return None, (
+            f"Provider '{provider_id}' has no base URL. Configure it on the "
+            "OpenAI-Compatible Endpoints page."
+        )
+    return instance, None
+
+
+def build_openai_compatible_instance_config(
+    provider_id: str,
+    instance: OpenAICompatibleInstance,
+    settings: Settings,
+) -> ProviderConfig:
+    """Build shared provider configuration for one numbered endpoint instance."""
+    api_keys = split_api_key_pool(instance.api_keys)
+    if not api_keys:
+        api_keys = (instance.api_keys,)
+    return ProviderConfig(
+        api_key=api_keys[0],
+        base_url=instance.base_url,
+        api_keys=api_keys,
+        rate_limit=settings.provider_rate_limit,
+        rate_window=settings.provider_rate_window,
+        max_concurrency=settings.provider_max_concurrency,
+        http_read_timeout=settings.http_read_timeout,
+        http_write_timeout=settings.http_write_timeout,
+        http_connect_timeout=settings.http_connect_timeout,
+        proxy=instance.proxy,
         log_raw_sse_events=settings.log_raw_sse_events,
         log_api_error_tracebacks=settings.log_api_error_tracebacks,
     )

@@ -15,7 +15,11 @@ from free_claude_code.providers.openai_chat import (
     create_openai_chat_provider,
 )
 
-from .config import build_provider_config
+from .config import (
+    build_openai_compatible_instance_config,
+    build_provider_config,
+    resolve_openai_compatible_instance,
+)
 
 ProviderFactory = Callable[
     [ProviderConfig, Settings, ProviderAdmissionController], BaseProvider
@@ -172,6 +176,21 @@ def create_provider(
     injected_factories: Mapping[str, ProviderFactory] | None = None,
 ) -> BaseProvider:
     """Create a provider instance for a supported provider id."""
+    instance, instance_error = resolve_openai_compatible_instance(provider_id, settings)
+    if instance_error is not None:
+        raise UnknownProviderError(instance_error)
+    if instance is not None:
+        config = build_openai_compatible_instance_config(
+            provider_id, instance, settings
+        )
+        admission = ProviderAdmissionController(
+            provider_name=provider_id,
+            rate_limit=config.rate_limit or 40,
+            rate_window=config.rate_window or 60.0,
+            max_concurrency=config.max_concurrency,
+        )
+        return create_openai_chat_provider("openai_compatible", config, admission)
+
     descriptor = PROVIDER_CATALOG.get(provider_id)
     if descriptor is None:
         raise UnknownProviderError.for_provider(provider_id, PROVIDER_CATALOG)

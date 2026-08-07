@@ -21,6 +21,7 @@ import type {
 
 import { ActionBar } from "./components/ActionBar"
 import { ConfigView } from "./components/ConfigView"
+import { OpenAICompatibleView } from "./components/OpenAICompatibleView"
 import { ProvidersView } from "./components/ProvidersView"
 import { Sidebar } from "./components/Sidebar"
 
@@ -48,6 +49,13 @@ export const VIEW_GROUPS: ViewGroup[] = [
     title: "Model Config",
     path: "model-config",
     sections: ["models", "reasoning", "web_tools"],
+  },
+  {
+    id: "openai_compatible",
+    label: "OpenAI-Compatible",
+    title: "OpenAI-Compatible Endpoints",
+    path: "openai-compatible",
+    sections: [],
   },
   {
     id: "messaging",
@@ -493,6 +501,16 @@ export default function App() {
               onCancelLogin={handleCancelLogin}
               onDisconnect={handleDisconnect}
               onCopyDeviceCode={copyDeviceCode}
+            />
+          )}
+
+          {activeView === "openai_compatible" && (
+            <OpenAICompatibleView
+              config={config}
+              values={values}
+              onValuesChange={setValues}
+              localStatus={localStatus}
+              onTestProvider={handleTestProvider}
             />
           )}
 

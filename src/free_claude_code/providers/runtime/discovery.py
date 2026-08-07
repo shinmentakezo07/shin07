@@ -18,7 +18,7 @@ from free_claude_code.core.failures import ExecutionFailure
 from free_claude_code.providers.base import BaseProvider
 from free_claude_code.providers.model_listing import ModelListResponseError
 
-from .config import has_provider_configuration
+from .config import has_provider_configuration, openai_compatible_instance_ids
 from .model_cache import ProviderModelCache
 
 ProviderResolver = Callable[[str], BaseProvider]
@@ -54,9 +54,13 @@ def model_cache_provider_ids_for_settings(
         for provider_id, descriptor in PROVIDER_CATALOG.items()
         if has_provider_configuration(descriptor, settings)
     )
-    available = set(configured) | set(connected_provider_ids)
-    return tuple(
-        provider_id for provider_id in PROVIDER_CATALOG if provider_id in available
+    instance_ids = openai_compatible_instance_ids(settings)
+    available = set(configured) | set(connected_provider_ids) | set(instance_ids)
+    return (
+        tuple(
+            provider_id for provider_id in PROVIDER_CATALOG if provider_id in available
+        )
+        + instance_ids
     )
 
 
@@ -71,7 +75,9 @@ def model_list_provider_ids_for_settings(
         for provider_id in model_cache_provider_ids_for_settings(
             settings, connected_provider_ids
         )
-        if not PROVIDER_CATALOG[provider_id].local or provider_id in referenced_ids
+        if provider_id not in PROVIDER_CATALOG
+        or not PROVIDER_CATALOG[provider_id].local
+        or provider_id in referenced_ids
     )
 
 

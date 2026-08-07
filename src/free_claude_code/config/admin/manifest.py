@@ -22,6 +22,7 @@ FieldType = Literal[
     "optional_model",
     "select",
     "textarea",
+    "instances",
 ]
 
 
@@ -173,6 +174,20 @@ _NON_PROVIDER_FIELDS: tuple[ConfigFieldSpec, ...] = (
         "optional_model",
         settings_attr="model_haiku",
         description="Select None to use the Default Model for Haiku requests.",
+    ),
+    ConfigFieldSpec(
+        "OPENAI_COMPATIBLE_INSTANCES",
+        "OpenAI-Compatible Instances",
+        "providers",
+        "instances",
+        settings_attr="openai_compatible_instances",
+        default="[]",
+        advanced=True,
+        description=(
+            "Managed from the OpenAI-Compatible Endpoints page. A JSON array of "
+            "{base_url, api_keys, proxy} entries; each entry becomes an "
+            "openai_compatible_N/<model> route."
+        ),
     ),
     ConfigFieldSpec(
         "REASONING_POLICY",

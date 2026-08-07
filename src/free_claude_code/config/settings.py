@@ -1,9 +1,11 @@
 """Flat application settings schema loaded by Pydantic Settings."""
 
+import json
+import re
 from functools import lru_cache
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .constants import HTTP_CONNECT_TIMEOUT_DEFAULT
@@ -15,6 +17,16 @@ from .env_files import (
 from .nim import NimSettings
 from .provider_catalog import BEDROCK_DEFAULT_BASE, SUPPORTED_PROVIDER_IDS
 from .reasoning import ReasoningPreference
+
+_OPENAI_COMPATIBLE_INSTANCE_RE = re.compile(r"openai_compatible_(\d+)")
+
+
+class OpenAICompatibleInstance(BaseModel):
+    """One user-defined OpenAI-compatible Chat Completions endpoint."""
+
+    base_url: str = ""
+    api_keys: str = ""
+    proxy: str = ""
 
 
 class Settings(BaseSettings):
@@ -36,6 +48,33 @@ class Settings(BaseSettings):
     openai_compatible_base_url: str = Field(
         default="", validation_alias="OPENAI_COMPATIBLE_BASE_URL"
     )
+    # Numbered endpoint instances managed by the admin "OpenAI-Compatible
+    # Endpoints" page. Each entry becomes an openai_compatible_N/<model> route,
+    # where N is the entry's 1-based position in the list.
+    openai_compatible_instances: tuple[OpenAICompatibleInstance, ...] = Field(
+        default_factory=tuple, validation_alias="OPENAI_COMPATIBLE_INSTANCES"
+    )
+
+    @field_validator("openai_compatible_instances", mode="before")
+    @classmethod
+    def parse_openai_compatible_instances(cls, value: Any) -> Any:
+        """Decode the JSON array stored in OPENAI_COMPATIBLE_INSTANCES."""
+        if value in (None, "", (), []):
+            return ()
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError as exc:
+                raise ValueError(
+                    "OPENAI_COMPATIBLE_INSTANCES must be a JSON array of "
+                    f"{{base_url, api_keys, proxy}} objects: {exc}"
+                ) from exc
+        if not isinstance(value, list):
+            raise ValueError(
+                "OPENAI_COMPATIBLE_INSTANCES must be a JSON array of "
+                "{base_url, api_keys, proxy} objects"
+            )
+        return value
 
     # ==================== OpenRouter Config ====================
     open_router_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
@@ -444,10 +483,40 @@ class Settings(BaseSettings):
                 f"Format: provider_type/model/name"
             )
         provider = v.split("/", 1)[0]
-        if provider not in SUPPORTED_PROVIDER_IDS:
+        if (
+            provider not in SUPPORTED_PROVIDER_IDS
+            and _OPENAI_COMPATIBLE_INSTANCE_RE.fullmatch(provider) is None
+        ):
             supported = ", ".join(f"'{p}'" for p in SUPPORTED_PROVIDER_IDS)
             raise ValueError(f"Invalid provider: '{provider}'. Supported: {supported}")
         return v
+
+    @model_validator(mode="after")
+    def check_openai_compatible_instance_routes(self) -> Settings:
+        """Reject numbered instance routes beyond the configured instance count."""
+        instance_count = len(self.openai_compatible_instances)
+        for attr in (
+            "model",
+            "model_fable",
+            "model_opus",
+            "model_sonnet",
+            "model_haiku",
+        ):
+            value = getattr(self, attr)
+            if not value or "/" not in value:
+                continue
+            provider = value.split("/", 1)[0]
+            match = _OPENAI_COMPATIBLE_INSTANCE_RE.fullmatch(provider)
+            if match is None:
+                continue
+            index = int(match.group(1))
+            if index < 1 or index > instance_count:
+                raise ValueError(
+                    f"{attr.upper()} references '{provider}' but only "
+                    f"{instance_count} OpenAI-compatible endpoint instance(s) "
+                    "are configured."
+                )
+        return self
 
     @model_validator(mode="after")
     def check_nvidia_nim_api_key(self) -> Settings:

@@ -203,6 +203,15 @@ fcc-codex exec "hello"
   (for example `https://my-gateway.example`) or its `/v1` base, and
   `OPENAI_COMPATIBLE_API_KEY` to a single key or a comma-separated key pool
   that is rotated round-robin with failover like every other provider.
+- The Admin UI **OpenAI-Compatible** page manages multiple endpoints at once.
+  Each endpoint you add becomes a numbered provider:
+  `openai_compatible_1/<model-id>`, `openai_compatible_2/<model-id>`, and so
+  on, where the number is the endpoint's position in the list. Give each
+  endpoint its own base URL, optional comma-separated key pool, and optional
+  proxy, then use the numbered routes in `MODEL` so it is easy to see which
+  endpoint a request uses. Endpoint 1 also answers the legacy
+  `openai_compatible/<model-id>` route; the single-endpoint env vars remain
+  the fallback when no endpoints are configured.
 - Mistral Codestral uses a separate key from Mistral La Plateforme.
 - Kimi Code subscription keys use `kimi_code/`; Kimi API credit keys use
   `kimi/`. Kimi Code plans are for personal interactive coding-agent use under
