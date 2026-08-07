@@ -419,5 +419,30 @@ def test_bootstrap_selects_nvidia_transcriber_without_loading_riva() -> None:
     assert isinstance(_create_transcriber(settings), NvidiaNimTranscriber)
 
 
+def test_bootstrap_uses_first_key_of_pooled_voice_credentials() -> None:
+    nim = _create_transcriber(
+        _settings(
+            voice_note_enabled=True,
+            whisper_device="nvidia_nim",
+            whisper_model="openai/whisper-large-v3",
+            nvidia_nim_api_key="nim-1, nim-2, nim-3",
+        )
+    )
+
+    assert isinstance(nim, NvidiaNimTranscriber)
+    assert nim._key == "nim-1"
+
+    local = _create_transcriber(
+        _settings(
+            voice_note_enabled=True,
+            whisper_device="cpu",
+            huggingface_api_key="hf-1, hf-2",
+        )
+    )
+
+    assert isinstance(local, TranscriptionService)
+    assert local._huggingface_api_key == "hf-1"
+
+
 def test_bootstrap_disables_transcription_as_one_owned_resource() -> None:
     assert _create_transcriber(_settings(voice_note_enabled=False)) is None

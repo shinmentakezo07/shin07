@@ -50,6 +50,7 @@ class ConfigFieldSpec:
     advanced: bool = False
     restart_required: bool = False
     session_sensitive: bool = False
+    pool_supported: bool = False
     description: str = ""
 
 

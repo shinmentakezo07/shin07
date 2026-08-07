@@ -633,6 +633,46 @@ textarea:focus-visible,
   margin-top: 2px;
 }
 
+/* Multi-key (pool) provider credential editor */
+.pool-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pool-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.pool-mask {
+  font-family: var(--mono, monospace);
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.pool-add {
+  display: flex;
+  gap: 8px;
+}
+
+.pool-add input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Show/Hide Advanced fields */
 .field.advanced-field {
   display: none;

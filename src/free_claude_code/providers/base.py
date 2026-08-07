@@ -27,6 +27,7 @@ class ProviderConfig:
 
     api_key: str
     base_url: str
+    api_keys: tuple[str, ...] = ()
     rate_limit: int | None = None
     rate_window: int = 60
     max_concurrency: int = 5

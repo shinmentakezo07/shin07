@@ -48,6 +48,7 @@ from free_claude_code.providers.http import (
     close_provider_stream,
     maybe_await_aclose,
 )
+from free_claude_code.providers.keypool import ApiKeyPool
 from free_claude_code.providers.model_listing import extract_openai_model_infos
 from free_claude_code.providers.stream_recovery import (
     RecoveryController,
@@ -107,35 +108,96 @@ class OpenAIChatProvider(BaseProvider):
         # later requests clamp proactively instead of paying the 400 each time.
         self._model_output_caps: dict[str, int] = {}
         self._admission = admission
-        http_client = None
-        if config.proxy:
-            http_client = httpx.AsyncClient(
-                proxy=config.proxy,
+        # One client per configured credential key. Most providers use a single
+        # key (one client); a comma-separated pool enables round-robin + failover.
+        # A dynamic api_key_provider (e.g. Vertex OAuth) owns its own rotation and
+        # always uses a single client.
+        if api_key_provider is not None:
+            keys: tuple[str, ...] = (self._api_key or "",)
+        else:
+            pool_keys = config.api_keys or (config.api_key,)
+            keys = tuple(key for key in pool_keys if key.strip()) or (config.api_key,)
+        self._clients = tuple(
+            self._build_async_client(
+                api_key=key,
+                api_key_provider=api_key_provider,
+                http_proxy=config.proxy,
+                http_read_timeout=config.http_read_timeout,
+                default_headers=default_headers,
+            )
+            for key in keys
+        )
+        self._client = self._clients[0]
+        self._pool = ApiKeyPool(keys) if len(keys) > 1 else None
+
+    def _build_async_client(
+        self,
+        *,
+        api_key: str,
+        http_proxy: str,
+        http_read_timeout: float,
+        default_headers: Mapping[str, str] | None,
+        api_key_provider: OpenAIAsyncCredentialProvider | None = None,
+    ) -> AsyncOpenAI:
+        """Construct one OpenAI-compatible async client for a single key."""
+        https_proxy = None
+        if http_proxy:
+            https_proxy = httpx.AsyncClient(
+                proxy=http_proxy,
                 timeout=httpx.Timeout(
-                    config.http_read_timeout,
-                    connect=config.http_connect_timeout,
-                    read=config.http_read_timeout,
-                    write=config.http_write_timeout,
+                    http_read_timeout,
+                    connect=self._config.http_connect_timeout,
+                    read=http_read_timeout,
+                    write=self._config.http_write_timeout,
                 ),
             )
-        self._client = AsyncOpenAI(
-            api_key=api_key_provider or self._api_key,
+        return AsyncOpenAI(
+            api_key=api_key_provider or api_key,
             base_url=self._base_url,
             max_retries=0,
             default_headers=default_headers,
             timeout=httpx.Timeout(
-                config.http_read_timeout,
-                connect=config.http_connect_timeout,
-                read=config.http_read_timeout,
-                write=config.http_write_timeout,
+                http_read_timeout,
+                connect=self._config.http_connect_timeout,
+                read=http_read_timeout,
+                write=self._config.http_write_timeout,
             ),
-            http_client=http_client,
+            http_client=https_proxy,
         )
 
+    async def _acquire_client(self) -> AsyncOpenAI:
+        """Return the next async client in round-robin order (failover target).
+
+        A single-key provider always returns the same client. With a multi-key
+        pool, each call advances the rotation so consecutive requests and retried
+        attempts land on distinct keys.
+        """
+        if self._pool is None:
+            return self._client
+        index = await self._pool.advance()
+        return self._clients[index]
+
     async def cleanup(self) -> None:
-        """Release HTTP client resources."""
-        client = getattr(self, "_client", None)
-        if client is not None:
+        """Release HTTP client resources.
+
+        Close the currently active client first (callers and tests may have
+        replaced ``_client`` since construction), then drain any pool members
+        that are not the same object as the active client. Duplicate entries
+        are skipped via object identity so we never close the same client
+        twice or double-await an awaitable that is not idempotent.
+        """
+        seen: set[int] = set()
+        candidates: tuple[Any, ...] = (
+            getattr(self, "_client", None),
+            *getattr(self, "_clients", ()),
+        )
+        for client in candidates:
+            if client is None:
+                continue
+            token = id(client)
+            if token in seen:
+                continue
+            seen.add(token)
             await client.close()
 
     async def list_model_infos(self) -> frozenset[ProviderModelInfo]:
@@ -147,8 +209,13 @@ class OpenAIChatProvider(BaseProvider):
 
     async def _list_models_payload(self) -> Any:
         """Fetch one OpenAI-compatible model-list payload with shared retries."""
+
+        async def list_models() -> Any:
+            client = await self._acquire_client()
+            return await client.models.list()
+
         payload = await self._admission.run_with_retry(
-            self._client.models.list,
+            list_models,
             provider_failure_override=self._provider_failure_override,
         )
         return payload
@@ -222,7 +289,8 @@ class OpenAIChatProvider(BaseProvider):
             retain_attempt = False
             try:
                 create_body = self._prepare_create_body(body)
-                stream = await self._client.chat.completions.create(
+                client = await self._acquire_client()
+                stream = await client.chat.completions.create(
                     **create_body,
                     stream=True,
                 )

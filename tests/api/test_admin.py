@@ -31,32 +31,23 @@ def _set_home(monkeypatch, tmp_path: Path) -> None:
 
 
 def _clear_process_config(monkeypatch) -> None:
-    for key in (
-        "MODEL",
-        "NVIDIA_NIM_API_KEY",
-        "HUGGINGFACE_API_KEY",
-        "OPENROUTER_API_KEY",
-        "AWS_BEARER_TOKEN_BEDROCK",
-        "BEDROCK_BASE_URL",
-        "BEDROCK_PROXY",
-        "OLLAMA_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "TELEGRAM_PROXY_URL",
+    from free_claude_code.config.admin.manifest import FIELD_BY_KEY
+
+    # Clear every admin-managed env var plus fixed runtime-only keys so the
+    # admin apply tests are independent of the ambient shell environment
+    # (exported provider keys, debug/log flags, voice settings, ...).
+    keys = {
         "FCC_ENV_FILE",
-        "CLOUDFLARE_API_TOKEN",
-        "CLOUDFLARE_ACCOUNT_ID",
-        "GITHUB_MODELS_TOKEN",
-        "SAMBANOVA_API_KEY",
         "HOST",
         "PORT",
-        "FCC_OPEN_BROWSER",
-        "VOICE_NOTE_ENABLED",
-        "WHISPER_DEVICE",
         "LOG_FILE",
         "ZAI_BASE_URL",
         "CLAUDE_WORKSPACE",
         "CLAUDE_CLI_BIN",
-    ):
+        "LOG_RAW_SSE_EVENTS",
+    }
+    keys.update(FIELD_BY_KEY)
+    for key in keys:
         monkeypatch.delenv(key, raising=False)
 
 
@@ -1224,3 +1215,131 @@ def test_admin_launch_url_uses_loopback_for_wildcard_host():
     settings = Settings.model_construct(host="0.0.0.0", port=8082)
 
     assert local_admin_url(settings) == "http://127.0.0.1:8082/admin"
+
+
+def test_admin_credential_fields_expose_key_pool_metadata(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        'OPENROUTER_API_KEY="k1, k2, k3"\n',
+        encoding="utf-8",
+    )
+    app = create_test_app()
+
+    response = _local_client(app).get("/admin/api/config")
+
+    assert response.status_code == 200
+    fields = {field["key"]: field for field in response.json()["fields"]}
+    credential = fields["OPENROUTER_API_KEY"]
+    assert credential["pool_supported"] is True
+    assert credential["key_count"] == 3
+    assert credential["keys"] == ["__fcc_key_0__", "__fcc_key_1__", "__fcc_key_2__"]
+    non_credential = fields["TELEGRAM_PROXY_URL"]
+    assert non_credential["pool_supported"] is False
+
+
+def test_admin_apply_persists_initial_key_pool(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    app = create_test_app()
+
+    response = _local_client(app).post(
+        "/admin/api/config/apply",
+        json={"values": {"OPENROUTER_API_KEY": "a", "OPENROUTER_API_KEY_MORE": "x"}},
+    )
+
+    # The extra unknown key is dropped; a single new key is persisted as a pool.
+    assert response.status_code == 200
+    assert response.json()["applied"] is True
+
+
+def test_admin_apply_resolves_pool_tokens_against_stored_keys(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        'OPENROUTER_API_KEY="a, b, c"\n',
+        encoding="utf-8",
+    )
+    app = create_test_app()
+
+    # Remove key "b" (index 1) and keep a new key at the end.
+    response = _local_client(app).post(
+        "/admin/api/config/apply",
+        json={"values": {"OPENROUTER_API_KEY": "__fcc_key_0__,,__fcc_key_2__,new-key"}},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["applied"] is True
+    text = (tmp_path / ".env").read_text("utf-8")
+    assert "OPENROUTER_API_KEY=a,c,new-key" in text
+    assert "OPENROUTER_API_KEY=a, b, c" not in text
+    assert "__fcc_key_" not in text
+
+
+def test_admin_apply_keeps_pool_unchanged_when_single_mask_submitted(
+    monkeypatch, tmp_path
+):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        'OPENROUTER_API_KEY="a, b"\n',
+        encoding="utf-8",
+    )
+    app = create_test_app()
+
+    response = _local_client(app).post(
+        "/admin/api/config/apply",
+        json={"values": {"OPENROUTER_API_KEY": MASKED_SECRET}},
+    )
+
+    assert response.status_code == 200
+    text = (tmp_path / ".env").read_text("utf-8")
+    assert 'OPENROUTER_API_KEY="a, b"' in text
+
+
+def test_admin_key_pool_editor_present_in_admin_script():
+    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+        encoding="utf-8"
+    )
+    styles = Path("src/free_claude_code/api/admin_static/admin.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert "renderPoolField" in script
+    assert "field.pool_supported" in script
+    assert 'input.dataset.pool = "true"' in script
+    assert '"Remove"' in script
+    assert '"Add API key"' in script
+    assert '"Add"' in script
+    assert "pool-editor" in styles
+    assert "pool-item" in styles
+    assert "pool-add" in styles
+    # The hidden pool input must be attached to the editor so changedValues()
+    # can submit tokens/raw keys; without it the UI silently drops edits.
+    assert "container.append(list, addRow, input)" in script
+    assert "dataset.pool" in script
+    assert "dataset.original" in script
+
+
+def test_admin_key_pool_editor_guards_locked_fields_and_reserved_values():
+    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+        encoding="utf-8"
+    )
+
+    # Locked (process/env-file) pools: adding is already disabled; removing must
+    # be too so edits are not silently dropped on apply.
+    assert "remove.disabled = field.locked" in script
+    # Keys containing commas would be split into multiple pool entries on save.
+    assert '"API keys cannot contain commas."' in script
+    # The __fcc_key_N__ token pattern is reserved for UI masking tokens.
+    assert "reserved; enter a real API key" in script
+    # Single-key pools get accurate copy instead of the rotation message.
+    assert "One key configured. Add extra keys for round-robin and failover." in script
+    assert "Multiple keys are used in rotation. Add extra keys" in script

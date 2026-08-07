@@ -9,6 +9,7 @@ from typing import Any
 from free_claude_code.config.env_files import repo_env_path
 from free_claude_code.config.settings import Settings
 
+from .keys import resolve_key_pool
 from .manifest import FIELD_BY_KEY, FIELDS, SECTIONS, ConfigFieldSpec
 from .sources import dotenv_values_from_file, is_locked_source, template_values
 from .validation import settings_from_values
@@ -79,6 +80,8 @@ def target_values_with_updates(updates: Mapping[str, Any]) -> dict[str, str]:
             continue
         if field.secret and value == MASKED_SECRET:
             continue
+        if field.pool_supported:
+            value = resolve_key_pool(str(value), str(state[key]["value"]))
         values[key] = normalize_for_env(value)
 
     for field in FIELDS:

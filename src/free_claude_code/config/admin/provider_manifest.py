@@ -181,6 +181,7 @@ def _credential_field_specs() -> tuple[dict[str, Any], ...]:
             "field_type": "secret",
             "settings_attr": descriptor.credential_attr,
             "secret": True,
+            "pool_supported": True,
         }
         spec.update(_PROVIDER_FIELD_OVERRIDES.get(descriptor.credential_env, {}))
         specs.append(spec)

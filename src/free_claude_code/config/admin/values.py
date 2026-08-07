@@ -3,6 +3,7 @@
 import os
 from typing import Any
 
+from .keys import pool_tokens, split_key_pool
 from .manifest import (
     FIELD_BY_KEY,
     FIELDS,
@@ -78,6 +79,14 @@ def load_config_response() -> dict[str, Any]:
         entry = state[field.key]
         source = entry["source"]
         raw_value = entry["value"]
+        pool = (
+            {
+                "key_count": len(split_key_pool(raw_value)),
+                "keys": list(pool_tokens(raw_value)),
+            }
+            if field.pool_supported
+            else {}
+        )
         fields.append(
             {
                 "key": field.key,
@@ -92,6 +101,7 @@ def load_config_response() -> dict[str, Any]:
                 "advanced": field.advanced,
                 "restart_required": field.restart_required,
                 "session_sensitive": field.session_sensitive,
+                "pool_supported": field.pool_supported,
                 "options": [
                     (
                         {"value": option.value, "label": option.label}
@@ -101,6 +111,7 @@ def load_config_response() -> dict[str, Any]:
                     for option in field.options
                 ],
                 "description": field.description,
+                **pool,
             }
         )
 

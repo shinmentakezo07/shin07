@@ -509,6 +509,19 @@ function renderField(field) {
     label.appendChild(sourceEl);
   }
 
+  if (field.pool_supported) {
+    const control = renderPoolField(field);
+    wrapper.append(label, control.element);
+    if (field.description) {
+      const description = document.createElement("div");
+      description.className = "field-description";
+      description.textContent = field.description;
+      wrapper.appendChild(description);
+    }
+    wrapper.appendChild(poolHint(field));
+    return wrapper;
+  }
+
   const input = inputForField(field);
   input.id = `field-${field.key}`;
   input.dataset.key = field.key;
@@ -540,6 +553,111 @@ function renderField(field) {
     wrapper.appendChild(description);
   }
   return wrapper;
+}
+
+function poolHint(field) {
+  const hint = document.createElement("div");
+  hint.className = "field-description";
+  const count = field.key_count || 0;
+  let text;
+  if (count === 0) {
+    text = `Add one or more API keys. Multiple keys rotate round-robin with failover.`;
+  } else if (count === 1) {
+    text = `One key configured. Add extra keys for round-robin and failover.`;
+  } else {
+    text = `Multiple keys are used in rotation. Add extra keys for round-robin and failover.`;
+  }
+  hint.textContent = text;
+  return hint;
+}
+
+function renderPoolField(field) {
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.id = `field-${field.key}`;
+  input.dataset.key = field.key;
+  input.dataset.pool = "true";
+  input.dataset.secret = "false";
+  input.dataset.fieldType = field.type;
+  input.dataset.original = (field.keys || []).join(",");
+  input.value = input.dataset.original;
+  input.disabled = field.locked;
+  input.addEventListener("input", updateDirtyState);
+  input.addEventListener("change", updateDirtyState);
+
+  const items = (field.keys || []).map((token) => ({ token }));
+  const container = document.createElement("div");
+  container.className = "pool-editor";
+
+  const list = document.createElement("div");
+  list.className = "pool-list";
+
+  function sync() {
+    list.innerHTML = "";
+    items.forEach((item, index) => {
+      if (item.token === null && !item.raw) return;
+      const row = document.createElement("div");
+      row.className = "pool-item";
+      const mask = document.createElement("span");
+      mask.className = "pool-mask";
+      mask.textContent = item.token
+        ? MASKED_SECRET
+        : "●".repeat(Math.min(24, Math.max(12, item.raw.length)));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "ghost-button";
+      remove.textContent = "Remove";
+      remove.disabled = field.locked;
+      remove.setAttribute("aria-label", "Remove API key");
+      remove.addEventListener("click", () => {
+        items.splice(index, 1);
+        sync();
+      });
+      row.append(mask, remove);
+      list.appendChild(row);
+    });
+    input.value = items.map((item) => item.token || item.raw).join(",");
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  sync();
+
+  const addRow = document.createElement("div");
+  addRow.className = "pool-add";
+  const addInput = document.createElement("input");
+  addInput.type = "password";
+  addInput.autocomplete = "off";
+  addInput.placeholder = "Add API key";
+  addInput.disabled = field.locked;
+  const addButton = document.createElement("button");
+  addButton.type = "button";
+  addButton.className = "secondary-button";
+  addButton.textContent = "Add";
+  addButton.disabled = field.locked;
+  addButton.addEventListener("click", () => {
+    const raw = addInput.value.trim();
+    if (!raw) return;
+    if (raw.includes(",")) {
+      showMessage("API keys cannot contain commas.", "error");
+      return;
+    }
+    if (/^__fcc_key_\d+__$/.test(raw)) {
+      showMessage("This key format is reserved; enter a real API key.", "error");
+      return;
+    }
+    items.push({ token: null, raw });
+    addInput.value = "";
+    sync();
+  });
+  addInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addButton.click();
+    }
+  });
+
+  addRow.append(addInput, addButton);
+  container.append(list, addRow, input);
+  return { element: container, input };
 }
 
 function inputForField(field) {

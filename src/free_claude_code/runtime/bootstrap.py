@@ -19,6 +19,7 @@ from free_claude_code.providers.openai_codex import (
     OpenAICodexProvider,
 )
 from free_claude_code.providers.runtime import ProviderRuntime
+from free_claude_code.providers.runtime.config import split_api_key_pool
 from free_claude_code.providers.runtime.factory import create_provider
 
 from .application import ApplicationRuntime, RestartCallback
@@ -78,16 +79,28 @@ def _create_openai_provider(
     return OpenAICodexProvider(config, auth=auth, admission=admission)
 
 
+def _first_pool_key(value: str) -> str:
+    """Return the first key of a comma-separated credential pool.
+
+    Provider chat credentials may be configured as a comma-separated pool for
+    round-robin rotation, but the voice transcribers consume a single key and
+    must never send the raw joined pool as one token.
+    """
+
+    keys = split_api_key_pool(value)
+    return keys[0] if keys else ""
+
+
 def _create_transcriber(settings: Settings) -> Transcriber | None:
     if not settings.voice_note_enabled:
         return None
     if settings.whisper_device == "nvidia_nim":
         return NvidiaNimTranscriber(
             model=settings.whisper_model,
-            api_key=settings.nvidia_nim_api_key,
+            api_key=_first_pool_key(settings.nvidia_nim_api_key),
         )
     return TranscriptionService(
         model=settings.whisper_model,
         device=settings.whisper_device,
-        huggingface_api_key=settings.huggingface_api_key,
+        huggingface_api_key=_first_pool_key(settings.huggingface_api_key),
     )
