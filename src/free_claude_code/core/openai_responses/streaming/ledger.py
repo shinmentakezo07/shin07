@@ -16,6 +16,8 @@ class ResponsesOutputLedger:
         self._fallback_text_index = -1
         self._input_tokens: int | None = None
         self._output_tokens: int | None = None
+        self._cache_read_input_tokens: int | None = None
+        self._cache_creation_input_tokens: int | None = None
         self._reasoning_tokens_estimate = 0
 
     def active_block(self, index: int) -> BlockState | None:
@@ -55,6 +57,10 @@ class ResponsesOutputLedger:
             self._input_tokens = usage["input_tokens"]
         if isinstance(usage.get("output_tokens"), int):
             self._output_tokens = usage["output_tokens"]
+        if isinstance(usage.get("cache_read_input_tokens"), int):
+            self._cache_read_input_tokens = usage["cache_read_input_tokens"]
+        if isinstance(usage.get("cache_creation_input_tokens"), int):
+            self._cache_creation_input_tokens = usage["cache_creation_input_tokens"]
 
     def add_reasoning_text(self, text: str) -> None:
         self._reasoning_tokens_estimate += estimate_text_tokens(text)
@@ -69,6 +75,10 @@ class ResponsesOutputLedger:
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
         }
+        if self._cache_read_input_tokens is not None:
+            usage["input_tokens_details"] = {
+                "cached_tokens": self._cache_read_input_tokens
+            }
         capped_reasoning_tokens = min(self._reasoning_tokens_estimate, output_tokens)
         if capped_reasoning_tokens:
             usage["output_tokens_details"] = {

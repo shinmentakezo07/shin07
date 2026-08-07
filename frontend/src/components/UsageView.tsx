@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   RefreshCw,
   XCircle,
@@ -35,6 +36,23 @@ import { Card, CardContent } from "./ui/card"
 import { Skeleton } from "./ui/skeleton"
 
 const REFRESH_INTERVAL_MS = 10_000
+
+const PAGE_SIZES = [10, 25, 50] as const
+
+/** Compact page-number list with ellipses for large logs (1 … 3 4 5 … 40). */
+function pageList(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1)
+  const pages: (number | "…")[] = [1]
+  if (current > 3) pages.push("…")
+  const start = Math.max(2, current - 1)
+  const end = Math.min(total - 1, current + 1)
+  for (let pageNumber = start; pageNumber <= end; pageNumber += 1) {
+    pages.push(pageNumber)
+  }
+  if (current < total - 2) pages.push("…")
+  pages.push(total)
+  return pages
+}
 
 const STATUS_VARIANT = {
   success: "ok",
@@ -91,6 +109,8 @@ export function UsageView() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [range, setRange] = useState<RangeKey>("1h")
   const [updatedAt, setUpdatedAt] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const refresh = async () => {
     try {
@@ -120,6 +140,14 @@ export function UsageView() {
   const filtered = filterByRange(records, range, now)
   const buckets = buildBuckets(filtered, now)
   const kpis = computeKpis(filtered, now)
+
+  // The request log is paginated; the page clamps when a refresh shrinks it.
+  const totalPages = Math.max(1, Math.ceil(records.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const pageStart = (currentPage - 1) * pageSize
+  const pageRecords = records.slice(pageStart, pageStart + pageSize)
+  const showingStart = records.length === 0 ? 0 : pageStart + 1
+  const showingEnd = Math.min(records.length, pageStart + pageSize)
 
   if (loading && !data) {
     return (
@@ -287,7 +315,7 @@ export function UsageView() {
                 </tr>
               </thead>
               <tbody>
-                {records.map((record) => {
+                {pageRecords.map((record) => {
                   const expanded = record.request_id === expandedId
                   const cacheTokens =
                     record.cache_creation_tokens + record.cache_read_tokens
@@ -306,6 +334,93 @@ export function UsageView() {
               </tbody>
             </table>
           </div>
+          {records.length > pageSize ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
+              <p className="text-xs text-muted-foreground">
+                Showing{" "}
+                <span className="font-mono">
+                  {showingStart}–{showingEnd}
+                </span>{" "}
+                of <span className="font-mono">{records.length}</span>
+              </p>
+              <nav
+                className="flex flex-wrap items-center gap-1"
+                aria-label="Request log pages"
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-1.5"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage(currentPage - 1)}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                {pageList(currentPage, totalPages).map((entry, index) =>
+                  entry === "…" ? (
+                    <span
+                      key={`ellipsis-${index}`}
+                      className="px-0.5 text-xs text-muted-foreground"
+                    >
+                      …
+                    </span>
+                  ) : (
+                    <Button
+                      key={entry}
+                      type="button"
+                      size="sm"
+                      variant={entry === currentPage ? "default" : "ghost"}
+                      className="min-w-7 px-1.5"
+                      aria-current={entry === currentPage ? "page" : undefined}
+                      onClick={() => setPage(entry)}
+                    >
+                      {entry}
+                    </Button>
+                  ),
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="px-1.5"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage(currentPage + 1)}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </nav>
+              <div
+                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+                role="group"
+                aria-label="Rows per page"
+              >
+                <span className="hidden sm:inline">Per page</span>
+                <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
+                  {PAGE_SIZES.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      className={cn(
+                        "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                        pageSize === size
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => {
+                        setPageSize(size)
+                        setPage(1)
+                      }}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </section>

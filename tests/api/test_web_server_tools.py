@@ -793,3 +793,103 @@ async def test_service_rejects_listed_server_tools_for_every_provider(
     )
     with pytest.raises(InvalidRequestError, match="cannot pass listed Anthropic"):
         await service.create(request)
+
+
+@pytest.mark.asyncio
+async def test_service_tracks_forced_web_search_usage(monkeypatch, tmp_path):
+    from free_claude_code.core.usage_tracking import (
+        get_buffer,
+        init_buffer,
+        reset_buffer,
+    )
+
+    async def fake_search(_query: str) -> list[dict[str, str]]:
+        return [{"title": "DeepSeek V4 Released", "url": "https://example.com/v4"}]
+
+    monkeypatch.setattr(
+        "free_claude_code.api.web_tools.outbound._run_web_search", fake_search
+    )
+    reset_buffer()
+    init_buffer(tmp_path / "usage.json")
+    try:
+        settings = Settings.model_validate({"ENABLE_WEB_SERVER_TOOLS": True})
+        service = MessagesHandler(
+            settings,
+            provider_resolver=MagicMock(),
+            model_router=FixedProviderModelRouter(
+                settings, _PROVIDER_IDS[0], provider_model="upstream-model"
+            ),
+        )
+        request = MessagesRequest(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=100,
+            stream=True,
+            messages=[Message(role="user", content="Search for DeepSeek V4")],
+            tools=[Tool(name="web_search", type="web_search_20250305")],
+            tool_choice={"type": "tool", "name": "web_search"},
+        )
+
+        response = await service.create(request)
+        assert isinstance(response, StreamingResponse)
+        raw = await _streaming_body_text(response)
+
+        assert "event: message_stop" in raw
+        buffer = get_buffer()
+        assert buffer is not None
+        records = buffer.query()
+        assert len(records) == 1
+        record = records[0]
+        assert record.status == "success"
+        assert record.provider == "server_tool"
+        assert record.gateway_model == request.model
+        assert record.input_tokens > 0
+        assert record.output_tokens > 0
+        assert record.prompt
+    finally:
+        reset_buffer()
+
+
+@pytest.mark.asyncio
+async def test_service_tracks_local_optimization_usage(tmp_path):
+    from free_claude_code.core.usage_tracking import (
+        get_buffer,
+        init_buffer,
+        reset_buffer,
+    )
+
+    reset_buffer()
+    init_buffer(tmp_path / "usage.json")
+    try:
+        settings = Settings.model_validate({"FAST_PREFIX_DETECTION": True})
+        service = MessagesHandler(
+            settings,
+            provider_resolver=MagicMock(),
+            model_router=FixedProviderModelRouter(settings, _PROVIDER_IDS[0]),
+        )
+        request = MessagesRequest(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=20,
+            stream=False,
+            messages=[
+                Message(
+                    role="user",
+                    content="<policy_spec>extract command</policy_spec>\nCommand: ls -la",
+                )
+            ],
+        )
+
+        response = await service.create(request)
+
+        assert response is not None
+        assert getattr(response, "usage", None) is not None
+        buffer = get_buffer()
+        assert buffer is not None
+        records = buffer.query()
+        assert len(records) == 1
+        record = records[0]
+        assert record.status == "success"
+        assert record.provider == "optimization"
+        assert record.input_tokens >= 100
+        assert record.output_tokens >= 1
+    finally:
+        reset_buffer()

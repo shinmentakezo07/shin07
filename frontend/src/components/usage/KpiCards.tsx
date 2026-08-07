@@ -1,7 +1,9 @@
 import { useId, type ReactNode } from "react"
 import {
   Activity,
+  BookOpen,
   Braces,
+  Database,
   Gauge,
   Timer,
   XCircle,
@@ -12,6 +14,7 @@ import { Area, AreaChart, ResponsiveContainer } from "recharts"
 import {
   CHART_COLORS,
   STATUS_COLORS,
+  TOKEN_COLORS,
   formatDuration,
   formatRate,
   formatTokens,
@@ -100,6 +103,24 @@ export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] 
       icon: <Braces className="size-3.5" />,
       color: CHART_COLORS[0],
       series: buckets.map((bucket) => bucket.tokens),
+    },
+    {
+      label: "Cache tokens",
+      value: formatTokens(kpis.cacheReadTokens + kpis.cacheWriteTokens),
+      hint: `${formatTokens(kpis.cacheReadTokens)} read · ${formatTokens(kpis.cacheWriteTokens)} written`,
+      icon: <Database className="size-3.5" />,
+      color: TOKEN_COLORS.cacheRead,
+      series: buckets.map(
+        (bucket) => bucket.cacheReadTokens + bucket.cacheWriteTokens,
+      ),
+    },
+    {
+      label: "Reasoning tokens",
+      value: formatTokens(kpis.reasoningTokens),
+      hint: "thinking / extended output",
+      icon: <BookOpen className="size-3.5" />,
+      color: TOKEN_COLORS.reasoning,
+      series: buckets.map((bucket) => bucket.reasoningTokens),
     },
     {
       label: "Tokens / minute",

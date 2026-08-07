@@ -551,6 +551,82 @@ async def test_anthropic_error_stream_converts_to_response_failed_event() -> Non
 
 
 @pytest.mark.asyncio
+async def test_cache_tokens_relay_into_response_usage() -> None:
+    response = await _completed_response_from_sse(
+        _aiter(
+            [
+                *_anthropic_text_stream("usage")[:-2],
+                format_sse_event(
+                    "message_delta",
+                    {
+                        "type": "message_delta",
+                        "delta": {"stop_reason": "end_turn"},
+                        "usage": {
+                            "input_tokens": 11,
+                            "output_tokens": 7,
+                            "cache_read_input_tokens": 80,
+                            "cache_creation_input_tokens": 20,
+                        },
+                    },
+                ),
+                format_sse_event("message_stop", {"type": "message_stop"}),
+            ]
+        ),
+        {"model": "nvidia_nim/test-model", "stream": True},
+    )
+
+    assert response["usage"] == {
+        "input_tokens": 11,
+        "output_tokens": 7,
+        "total_tokens": 18,
+        "input_tokens_details": {"cached_tokens": 80},
+    }
+
+
+@pytest.mark.asyncio
+async def test_cache_tokens_are_split_across_deltas_accumulated() -> None:
+    response = await _completed_response_from_sse(
+        _aiter(
+            [
+                *_anthropic_text_stream("usage")[:-2],
+                format_sse_event(
+                    "message_delta",
+                    {
+                        "type": "message_delta",
+                        "delta": {"stop_reason": "end_turn"},
+                        "usage": {
+                            "input_tokens": 11,
+                            "output_tokens": 7,
+                            "cache_read_input_tokens": 80,
+                        },
+                    },
+                ),
+                format_sse_event(
+                    "message_delta",
+                    {
+                        "type": "message_delta",
+                        "delta": {},
+                        "usage": {
+                            "output_tokens": 9,
+                            "cache_creation_input_tokens": 20,
+                        },
+                    },
+                ),
+                format_sse_event("message_stop", {"type": "message_stop"}),
+            ]
+        ),
+        {"model": "nvidia_nim/test-model", "stream": True},
+    )
+
+    assert response["usage"] == {
+        "input_tokens": 11,
+        "output_tokens": 9,
+        "total_tokens": 20,
+        "input_tokens_details": {"cached_tokens": 80},
+    }
+
+
+@pytest.mark.asyncio
 async def test_split_usage_deltas_are_accumulated() -> None:
     response = await _completed_response_from_sse(
         _aiter(

@@ -563,7 +563,7 @@ export default function App() {
   if (!config) {
     return (
       <div className="flex min-h-screen">
-        <aside className="hidden w-64 shrink-0 flex-col gap-3 border-r p-4 md:flex">
+        <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col gap-3 overflow-y-auto border-r p-4 md:flex">
           <Skeleton className="h-10 w-full" />
           <div className="mt-3 space-y-2">
             <Skeleton className="h-9 w-5/6" />
@@ -594,7 +594,7 @@ export default function App() {
         config={config}
         activeView={activeView}
         onSelectView={handleSelectView}
-        className="hidden md:flex"
+        className="sticky top-0 hidden h-screen md:flex"
       />
       {mobileNavOpen ? (
         <div

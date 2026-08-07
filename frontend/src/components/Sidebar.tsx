@@ -26,7 +26,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground",
+        "flex w-64 shrink-0 flex-col overflow-y-auto border-r bg-sidebar text-sidebar-foreground",
         className,
       )}
     >

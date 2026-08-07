@@ -1,6 +1,7 @@
 """Claude Messages API product flow."""
 
 import asyncio
+import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, replace
 
@@ -49,6 +50,13 @@ from free_claude_code.core.diagnostics import safe_exception_message
 from free_claude_code.core.failures import ExecutionFailure, find_execution_failure
 from free_claude_code.core.reasoning import ReasoningControl, ReasoningPolicy
 from free_claude_code.core.trace import trace_event
+from free_claude_code.core.usage_tracking import (
+    PendingUsageRecord,
+    UsageRecord,
+    UsageTrackingStream,
+    extract_prompt,
+    get_buffer,
+)
 
 
 @dataclass(frozen=True)
@@ -62,7 +70,7 @@ class _MessagesCompleteResult:
 
 
 _MessagesResult = _MessagesStreamResult | _MessagesCompleteResult
-MessageIntercept = Callable[[RoutedMessagesRequest], _MessagesResult | None]
+MessageIntercept = Callable[[RoutedMessagesRequest, str], _MessagesResult | None]
 
 
 class MessagesHandler:
@@ -103,7 +111,7 @@ class MessagesHandler:
             routed = self._apply_message_routing_policies(routed)
             self._reject_unsupported_server_tools(routed)
 
-            result = self._run_message_intercepts(routed)
+            result = self._run_message_intercepts(routed, request_id)
             if result is None:
                 logger.debug("No optimization matched, routing to provider")
                 result = _MessagesStreamResult(
@@ -285,16 +293,16 @@ class MessagesHandler:
         return replace(routed, reasoning=ReasoningPolicy.off())
 
     def _run_message_intercepts(
-        self, routed: RoutedMessagesRequest
+        self, routed: RoutedMessagesRequest, request_id: str
     ) -> _MessagesResult | None:
         for intercept in self._message_intercepts:
-            result = intercept(routed)
+            result = intercept(routed, request_id)
             if result is not None:
                 return result
         return None
 
     def _intercept_web_server_tool(
-        self, routed: RoutedMessagesRequest
+        self, routed: RoutedMessagesRequest, request_id: str
     ) -> _MessagesResult | None:
         if not self._settings.enable_web_server_tools:
             return None
@@ -316,18 +324,29 @@ class MessagesHandler:
                 self._settings.web_fetch_allowed_schemes
             ),
         )
-        return _MessagesStreamResult(
-            stream_web_server_tool_response(
-                routed.request,
-                input_tokens=input_tokens,
-                web_fetch_egress=egress,
-                response_model=routed.resolved.original_model,
-                verbose_client_errors=self._settings.log_api_error_tracebacks,
-            ),
+        stream = stream_web_server_tool_response(
+            routed.request,
+            input_tokens=input_tokens,
+            web_fetch_egress=egress,
+            response_model=routed.resolved.original_model,
+            verbose_client_errors=self._settings.log_api_error_tracebacks,
         )
+        if get_buffer() is not None:
+            pending = PendingUsageRecord(
+                request_id=request_id,
+                started_at=time.time(),
+                provider="server_tool",
+                provider_model=routed.resolved.provider_model,
+                gateway_model=routed.resolved.original_model,
+                wire_api="messages",
+                input_tokens=input_tokens,
+                prompt=extract_prompt(routed.request),
+            )
+            stream = UsageTrackingStream(stream, pending)
+        return _MessagesStreamResult(stream)
 
     def _intercept_local_optimization(
-        self, routed: RoutedMessagesRequest
+        self, routed: RoutedMessagesRequest, request_id: str
     ) -> _MessagesResult | None:
         optimized = try_optimizations(
             routed.request,
@@ -342,7 +361,32 @@ class MessagesHandler:
             source="api",
             model=routed.resolved.original_model,
         )
+        self._record_optimization_usage(routed, optimized, request_id)
         return _MessagesCompleteResult(optimized)
+
+    def _record_optimization_usage(
+        self,
+        routed: RoutedMessagesRequest,
+        optimized: object,
+        request_id: str,
+    ) -> None:
+        buffer = get_buffer()
+        if buffer is None:
+            return
+        usage = getattr(optimized, "usage", None)
+        buffer.push(
+            UsageRecord(
+                request_id=request_id,
+                timestamp=time.time(),
+                provider="optimization",
+                provider_model=routed.resolved.provider_model,
+                gateway_model=routed.resolved.original_model,
+                wire_api="messages",
+                input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+                output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+                prompt=extract_prompt(routed.request),
+            )
+        )
 
 
 def _stream_error_fields(error: dict[str, object]) -> tuple[str, str]:

@@ -50,6 +50,9 @@ export interface TimeBucket {
   successTokens: number
   errorTokens: number
   cancelledTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  reasoningTokens: number
   latencySum: number
   latencyCount: number
   bucketSeconds: number
@@ -100,6 +103,8 @@ export interface HeatmapCell {
   day: number
   count: number
   tokens: number
+  latencySum: number
+  latencyCount: number
 }
 
 export const HEATMAP_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const
@@ -174,6 +179,9 @@ export function buildBuckets(records: UsageRecord[], now: number): TimeBucket[] 
       successTokens: 0,
       errorTokens: 0,
       cancelledTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
       latencySum: 0,
       latencyCount: 0,
       bucketSeconds,
@@ -187,6 +195,9 @@ export function buildBuckets(records: UsageRecord[], now: number): TimeBucket[] 
     const tokens = record.input_tokens + record.output_tokens
     bucket.count += 1
     bucket.tokens += tokens
+    bucket.cacheReadTokens += record.cache_read_tokens
+    bucket.cacheWriteTokens += record.cache_creation_tokens
+    bucket.reasoningTokens += record.reasoning_tokens
     bucket.latencySum += record.duration_ms
     bucket.latencyCount += 1
     if (record.status === "success") {
@@ -360,15 +371,33 @@ export function buildHourHeatmap(records: UsageRecord[]): HeatmapCell[] {
     const day = (date.getDay() + 6) % 7
     const hour = date.getHours()
     const key = day * 24 + hour
-    const cell = cells.get(key) ?? { hour, day, count: 0, tokens: 0 }
+    const cell = cells.get(key) ?? {
+      hour,
+      day,
+      count: 0,
+      tokens: 0,
+      latencySum: 0,
+      latencyCount: 0,
+    }
     cell.count += 1
     cell.tokens += record.input_tokens + record.output_tokens
+    cell.latencySum += record.duration_ms
+    cell.latencyCount += 1
     cells.set(key, cell)
   }
   const all: HeatmapCell[] = []
   for (let day = 0; day < 7; day += 1) {
     for (let hour = 0; hour < 24; hour += 1) {
-      all.push(cells.get(day * 24 + hour) ?? { hour, day, count: 0, tokens: 0 })
+      all.push(
+        cells.get(day * 24 + hour) ?? {
+          hour,
+          day,
+          count: 0,
+          tokens: 0,
+          latencySum: 0,
+          latencyCount: 0,
+        },
+      )
     }
   }
   return all

@@ -2,20 +2,16 @@ import { useEffect, useRef } from "react"
 
 import * as echarts from "echarts/core"
 import { HeatmapChart, SankeyChart } from "echarts/charts"
-import {
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  VisualMapComponent,
-} from "echarts/components"
+import { GridComponent, TooltipComponent, VisualMapComponent } from "echarts/components"
 import { CanvasRenderer } from "echarts/renderers"
 import type { EChartsCoreOption, EChartsType } from "echarts/core"
 
+// The heatmap series requires the visualMap component to be registered even
+// when its UI is hidden (the option-level visualMap drives cell coloring).
 echarts.use([
   SankeyChart,
   HeatmapChart,
   GridComponent,
-  LegendComponent,
   TooltipComponent,
   VisualMapComponent,
   CanvasRenderer,
