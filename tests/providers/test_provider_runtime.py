@@ -1,6 +1,7 @@
 import asyncio
 import subprocess
 import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from free_claude_code.application.errors import (
     ApplicationUnavailableError,
     UnknownProviderError,
 )
+from free_claude_code.application.model_metadata import ProviderModelInfo
 from free_claude_code.config.nim import NimSettings
 from free_claude_code.config.provider_catalog import (
     BEDROCK_DEFAULT_BASE,
@@ -382,6 +384,41 @@ def test_openai_compatible_instance_without_base_url_raises_clear_error() -> Non
         match="'openai_compatible_2' has no base URL",
     ):
         create_provider("openai_compatible_2", settings)
+
+
+@pytest.mark.asyncio
+async def test_numbered_instance_list_model_infos_fetches_models() -> None:
+    """A numbered instance fetches model ids from its /models endpoint."""
+    settings = _make_settings(
+        openai_compatible_instances=(
+            OpenAICompatibleInstance(base_url="https://a.example", api_keys="k1"),
+            OpenAICompatibleInstance(
+                base_url="https://b.example/v1", api_keys="k2, k3"
+            ),
+        )
+    )
+    with patch("free_claude_code.providers.openai_chat.provider.AsyncOpenAI"):
+        provider = create_provider("openai_compatible_2", settings)
+    assert isinstance(provider, OpenAIChatProvider)
+
+    provider._client.models.list = AsyncMock(
+        return_value=SimpleNamespace(
+            data=[
+                SimpleNamespace(id="b-model-1"),
+                SimpleNamespace(id="b-model-2"),
+            ]
+        )
+    )
+
+    infos = await provider.list_model_infos()
+
+    assert infos == frozenset(
+        {
+            ProviderModelInfo("b-model-1"),
+            ProviderModelInfo("b-model-2"),
+        }
+    )
+    provider._client.models.list.assert_awaited_once_with()
 
 
 def test_model_cache_discovery_includes_numbered_instances() -> None:

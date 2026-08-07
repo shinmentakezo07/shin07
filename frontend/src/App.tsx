@@ -149,6 +149,10 @@ export default function App() {
     (text: string) => setMessage({ text, kind: "warn" }),
     [],
   )
+  const showMessage = useCallback(
+    (text: string, kind?: string) => setMessage({ text, kind }),
+    [],
+  )
 
   const changedValues = useCallback((): Record<string, string> => {
     if (!config) return {}
@@ -379,6 +383,35 @@ export default function App() {
     [setMessageError, setMessageOk],
   )
 
+  const handleFetchEndpointModels = useCallback(
+    async (providerId: string): Promise<string[]> => {
+      try {
+        const result = await testProvider(providerId)
+        if (!result.ok) {
+          setMessageError(
+            `Could not fetch models from ${providerId}: ${
+              result.error_type ?? "request failed"
+            }`,
+          )
+          return []
+        }
+        setModelOptions((prev) => [
+          ...new Set([
+            ...prev,
+            ...result.models.map((model) => `${providerId}/${model}`),
+          ]),
+        ])
+        return result.models
+      } catch (error) {
+        setMessageError(
+          `Could not fetch models from ${providerId}: ${errorMessage(error)}`,
+        )
+        return []
+      }
+    },
+    [setMessageError],
+  )
+
   const handleRefreshModels = useCallback(
     async (_providerId: string, done?: () => void) => {
       try {
@@ -511,6 +544,8 @@ export default function App() {
               onValuesChange={setValues}
               localStatus={localStatus}
               onTestProvider={handleTestProvider}
+              onFetchModels={handleFetchEndpointModels}
+              onMessage={showMessage}
             />
           )}
 

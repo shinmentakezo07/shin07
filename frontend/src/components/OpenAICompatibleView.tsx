@@ -19,6 +19,8 @@ interface OpenAICompatibleViewProps {
   onValuesChange: (values: Record<string, string>) => void
   localStatus: Record<string, LocalProviderStatus>
   onTestProvider: (providerId: string, done?: () => void) => void
+  onFetchModels: (providerId: string) => Promise<string[]>
+  onMessage: (text: string, kind?: string) => void
 }
 
 interface InstanceStatus {
@@ -82,9 +84,14 @@ interface InstanceCardProps {
   status: InstanceStatus
   locked: boolean
   testing: boolean
+  fetching: boolean
+  models: string[]
   onPatch: (patch: Partial<OpenAICompatibleInstance>) => void
   onRemove: () => void
   onTest: () => void
+  onFetch: () => void
+  onClearModels: () => void
+  onUseModel: (model: string) => void
 }
 
 function InstanceCard({
@@ -93,11 +100,17 @@ function InstanceCard({
   status,
   locked,
   testing,
+  fetching,
+  models,
   onPatch,
   onRemove,
   onTest,
+  onFetch,
+  onClearModels,
+  onUseModel,
 }: InstanceCardProps) {
   const providerId = providerIdFor(index)
+  const canProbe = !locked && Boolean(instance.base_url.trim())
   return (
     <Card>
       <CardContent className="flex flex-col gap-4 py-4">
@@ -161,19 +174,70 @@ function InstanceCard({
             onChange={(event) => onPatch({ proxy: event.target.value })}
           />
         </div>
-        <div className="flex items-center justify-between gap-2">
+        {models.length > 0 ? (
+          <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">
+                {models.length} model{models.length === 1 ? "" : "s"} from /models
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={locked}
+                onClick={onClearModels}
+              >
+                Clear
+              </Button>
+            </div>
+            <div className="grid max-h-56 gap-1 overflow-auto">
+              {models.map((model) => (
+                <div
+                  key={model}
+                  className="flex items-center justify-between gap-2 rounded-md bg-card px-2.5 py-1.5"
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                    {model}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={locked}
+                    onClick={() => onUseModel(model)}
+                  >
+                    Use as default
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             {status.baseUrl ? `Resolves to ${status.baseUrl}` : "Not checked yet"}
           </p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={locked || !instance.base_url.trim() || testing}
-            onClick={onTest}
-          >
-            {testing ? "Testing…" : "Test connection"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={!canProbe || fetching}
+              onClick={onFetch}
+              title="Fetch model ids from GET {base}/models (uses the saved config, Apply first)"
+            >
+              {fetching ? "Fetching…" : "Fetch models"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={!canProbe || testing}
+              onClick={onTest}
+            >
+              {testing ? "Testing…" : "Test connection"}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -186,6 +250,8 @@ export function OpenAICompatibleView({
   onValuesChange,
   localStatus,
   onTestProvider,
+  onFetchModels,
+  onMessage,
 }: OpenAICompatibleViewProps) {
   const field = config.fields.find(
     (candidate) => candidate.key === INSTANCES_FIELD_KEY,
@@ -195,6 +261,10 @@ export function OpenAICompatibleView({
     parseInstances(raw),
   )
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [fetchingId, setFetchingId] = useState<string | null>(null)
+  const [modelsByProvider, setModelsByProvider] = useState<Record<string, string[]>>(
+    {},
+  )
 
   useEffect(() => {
     setInstances(parseInstances(raw))
@@ -221,6 +291,28 @@ export function OpenAICompatibleView({
     commit(instances.filter((_, i) => i !== index))
   }
 
+  const fetchModels = async (index: number) => {
+    const providerId = providerIdFor(index)
+    setFetchingId(providerId)
+    try {
+      const models = await onFetchModels(providerId)
+      if (models.length === 0) {
+        setModelsByProvider((prev) => ({ ...prev, [providerId]: [] }))
+        return
+      }
+      setModelsByProvider((prev) => ({ ...prev, [providerId]: models }))
+      onMessage(`Fetched ${models.length} models from ${providerId}.`, "ok")
+    } finally {
+      setFetchingId(null)
+    }
+  }
+
+  const useModelAsDefault = (index: number, model: string) => {
+    const route = `${providerIdFor(index)}/${model}`
+    onValuesChange({ ...values, MODEL: route })
+    onMessage(`Default model set to ${route}. Apply to save.`, "ok")
+  }
+
   if (!field) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -240,8 +332,10 @@ export function OpenAICompatibleView({
           Add any OpenAI-compatible server (vLLM, LM Studio, Ollama, Together, or
           your own gateway). Each endpoint becomes a numbered provider:{" "}
           <code>openai_compatible_1/&lt;model&gt;</code>,{" "}
-          <code>openai_compatible_2/&lt;model&gt;</code>, … Use the number in
-          model routes to tell endpoints apart, then Apply to save.
+          <code>openai_compatible_2/&lt;model&gt;</code>, … Use{" "}
+          <strong>Fetch models</strong> to pull model ids from the endpoint's{" "}
+          <code>/models</code> route, then Apply to save. Fetched ids also appear
+          in the Model Config dropdowns.
         </p>
       </div>
 
@@ -288,12 +382,19 @@ export function OpenAICompatibleView({
                 status={statusFor(providerId, config, localStatus)}
                 locked={field.locked}
                 testing={testingId === providerId}
+                fetching={fetchingId === providerId}
+                models={modelsByProvider[providerId] ?? []}
                 onPatch={(patch) => updateInstance(index, patch)}
                 onRemove={() => removeInstance(index)}
                 onTest={() => {
                   setTestingId(providerId)
                   onTestProvider(providerId, () => setTestingId(null))
                 }}
+                onFetch={() => void fetchModels(index)}
+                onClearModels={() =>
+                  setModelsByProvider((prev) => ({ ...prev, [providerId]: [] }))
+                }
+                onUseModel={(model) => useModelAsDefault(index, model)}
               />
             )
           })}

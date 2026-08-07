@@ -107,8 +107,21 @@ def test_provider_catalog_display_names_are_admin_status_source() -> None:
         for entry in provider_config_status(load_value_state())
     }
 
-    assert set(status_by_provider) == set(PROVIDER_CATALOG)
+    # Numbered OpenAI-compatible instances replace the single legacy
+    # openai_compatible status entry when endpoints are configured.
+    numbered_instance_ids = {
+        provider_id
+        for provider_id in status_by_provider
+        if provider_id.startswith("openai_compatible_")
+    }
+    expected = set(PROVIDER_CATALOG)
+    if numbered_instance_ids:
+        expected.discard("openai_compatible")
+    assert set(status_by_provider) == expected | numbered_instance_ids
+
     for provider_id, desc in PROVIDER_CATALOG.items():
+        if provider_id == "openai_compatible" and numbered_instance_ids:
+            continue
         assert status_by_provider[provider_id]["display_name"] == desc.display_name
         expected_kind = (
             "connected_account"
