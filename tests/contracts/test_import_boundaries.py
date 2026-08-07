@@ -37,6 +37,15 @@ IMPORT_EXCEPTIONS: dict[tuple[str, str], str] = {
         "Owner: installed server command. "
         "Reason: the command delegates construction to the process composition root."
     ),
+    (
+        "free_claude_code.application.routing",
+        "free_claude_code.providers.runtime.config",
+    ): (
+        "Owner: application routing. "
+        "Reason: bare model ids are resolved against the configured OpenAI-compatible "
+        "endpoint model lists (provider runtime config) so the numbered-instance "
+        "prefix stays optional and duplicate ids rotate round-robin."
+    ),
 }
 
 FACADE_ONLY_BOUNDARIES = {

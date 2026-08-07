@@ -28,9 +28,13 @@ def parse_provider_type(model_ref: str) -> str:
 
 
 def parse_model_name(model_ref: str) -> str:
-    """Extract model name from any 'provider/model' string."""
+    """Extract model name from any 'provider/model' string.
 
-    return model_ref.split("/", 1)[1]
+    Bare ids (no provider prefix) are returned whole; the prefix is optional
+    and such ids resolve to the OpenAI-compatible endpoint that advertises them.
+    """
+
+    return model_ref.split("/", 1)[1] if "/" in model_ref else model_ref
 
 
 def configured_chat_model_refs(

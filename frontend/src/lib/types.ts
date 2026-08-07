@@ -116,3 +116,39 @@ export interface OpenAICompatibleInstance {
   /** Model ids applied to this endpoint; persisted on Apply. */
   models?: string[]
 }
+
+export interface UsageStats {
+  total_requests: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cache_creation_tokens: number
+  total_cache_read_tokens: number
+  total_reasoning_tokens: number
+  errors: number
+  cancelled: number
+  tpm: number
+  tps: number
+}
+
+export interface UsageRecord {
+  request_id: string
+  timestamp: number
+  provider: string
+  provider_model: string
+  gateway_model: string
+  wire_api: "messages" | "responses"
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  reasoning_tokens: number
+  duration_ms: number
+  status: "success" | "error" | "cancelled"
+  error_type: string | null
+  prompt: string
+}
+
+export interface UsageResult {
+  stats: UsageStats
+  records: UsageRecord[]
+}

@@ -22,6 +22,38 @@ def split_api_key_pool(value: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in value.split(",") if part.strip())
 
 
+def mask_api_key(value: str) -> str:
+    """Mask the first key of a pool for logs; never expose raw credentials."""
+    keys = split_api_key_pool(value)
+    if not keys:
+        return "not set"
+    key = keys[0]
+    if len(key) <= 8:
+        return "****"
+    return f"{key[:4]}…{key[-4:]}"
+
+
+def openai_compatible_model_candidates(
+    settings: Settings, model_id: str
+) -> tuple[tuple[str, OpenAICompatibleInstance], ...]:
+    """Return numbered endpoints whose saved model ids include ``model_id``.
+
+    Each entry is ``(provider_id, instance)`` for a configured endpoint that
+    advertises the bare model id, so requests can resolve the id without a
+    provider prefix. When several endpoints share the id the caller rotates
+    between them (provider plus key pool) and logs the selection.
+    """
+    if not isinstance(settings.openai_compatible_instances, tuple):
+        return ()
+    candidates: list[tuple[str, OpenAICompatibleInstance]] = []
+    for index, instance in enumerate(settings.openai_compatible_instances, start=1):
+        if not instance.base_url.strip():
+            continue
+        if any(model.strip() == model_id for model in instance.models):
+            candidates.append((f"openai_compatible_{index}", instance))
+    return tuple(candidates)
+
+
 def provider_credential(descriptor: ProviderDescriptor, settings: Settings) -> str:
     """Return the configured credential for a provider descriptor."""
     if descriptor.static_credential is not None:

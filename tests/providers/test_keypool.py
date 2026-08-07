@@ -15,7 +15,7 @@ from free_claude_code.providers.runtime import (
     build_provider_config,
     create_provider,
 )
-from free_claude_code.providers.runtime.config import split_api_key_pool
+from free_claude_code.providers.runtime.config import mask_api_key, split_api_key_pool
 
 
 @pytest.mark.parametrize(
@@ -30,6 +30,19 @@ from free_claude_code.providers.runtime.config import split_api_key_pool
 )
 def test_split_api_key_pool(raw: str, expected: tuple[str, ...]) -> None:
     assert split_api_key_pool(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", "not set"),
+        ("short", "****"),
+        ("sk-abcdefgh12345678", "sk-a…5678"),
+        ("sk-abcdefgh12345678,sk-second-key", "sk-a…5678"),
+    ],
+)
+def test_mask_api_key(raw: str, expected: str) -> None:
+    assert mask_api_key(raw) == expected
 
 
 def test_api_key_pool_rejects_empty():

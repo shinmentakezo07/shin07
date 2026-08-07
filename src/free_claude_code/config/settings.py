@@ -482,11 +482,10 @@ class Settings(BaseSettings):
         if v is None:
             return None
         if "/" not in v:
-            raise ValueError(
-                f"Model must be prefixed with provider type. "
-                f"Valid providers: {', '.join(SUPPORTED_PROVIDER_IDS)}. "
-                f"Format: provider_type/model/name"
-            )
+            # Bare model id: the provider prefix is optional. The id resolves
+            # at request time to whichever OpenAI-compatible endpoint
+            # advertises it (round-robin when several endpoints share it).
+            return v
         provider = v.split("/", 1)[0]
         if (
             provider not in SUPPORTED_PROVIDER_IDS

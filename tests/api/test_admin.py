@@ -355,7 +355,8 @@ def test_admin_static_model_combobox_preserves_custom_slugs_and_none_semantics()
     )
 
     assert '["None", ...models]' in script
-    assert "Press Enter to use your typed model id." in script
+    assert "Press Enter to use this model id." in script
+    assert "Use &quot;{draft}&quot;" in script
     assert "commitDraft" in script
     assert 'case "optional_model":' in control
     assert 'fieldType === "optional_model"' in script
@@ -523,6 +524,9 @@ def test_admin_models_include_stored_openai_compatible_instance_models():
     assert response.status_code == 200
     assert response.json() == {
         "models": [
+            "deepseek-v3",
+            "gpt-4o",
+            "local-model",
             "nvidia_nim/configured-model",
             "openai_compatible_1/deepseek-v3",
             "openai_compatible_1/gpt-4o",
@@ -640,20 +644,33 @@ def test_admin_apply_masks_telegram_proxy_credentials(monkeypatch, tmp_path):
     assert f"TELEGRAM_PROXY_URL={proxy_url}" in text
 
 
-def test_admin_validate_rejects_bad_model_shape(monkeypatch, tmp_path):
+def test_admin_validate_accepts_bare_model_and_rejects_bad_provider(
+    monkeypatch, tmp_path
+):
     _set_home(monkeypatch, tmp_path)
     _clear_process_config(monkeypatch)
     app = create_test_app()
 
+    # Bare model ids are valid: the provider prefix is optional and resolves
+    # at runtime to whichever OpenAI-compatible endpoint advertises the id.
     response = _local_client(app).post(
         "/admin/api/config/validate",
         json={"values": {"MODEL": "missing-provider-prefix"}},
     )
 
     assert response.status_code == 200
+    assert response.json()["valid"] is True
+
+    # A prefixed ref with an unknown provider is still rejected.
+    response = _local_client(app).post(
+        "/admin/api/config/validate",
+        json={"values": {"MODEL": "bad_provider/some-model"}},
+    )
+
+    assert response.status_code == 200
     body = response.json()
     assert body["valid"] is False
-    assert any("provider type" in error for error in body["errors"])
+    assert any("Invalid provider" in error for error in body["errors"])
 
 
 def test_admin_apply_writes_complete_managed_env_and_masks_preview(
@@ -1461,3 +1478,68 @@ def test_admin_key_pool_editor_guards_locked_fields_and_reserved_values():
     # Single-key pools get accurate copy instead of the rotation message.
     assert "One key configured. Add extra keys for round-robin and failover." in script
     assert "Multiple keys are used in rotation. Add extra keys" in script
+
+
+def test_admin_usage_route_returns_empty_stats(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+
+    response = _local_client(create_test_app()).get("/admin/api/usage")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stats"]["total_requests"] == 0
+    assert payload["records"] == []
+
+
+def test_admin_usage_route_returns_captured_records(monkeypatch, tmp_path):
+    from free_claude_code.core.usage_tracking import (
+        UsageRecord,
+        get_buffer,
+        reset_buffer,
+    )
+
+    reset_buffer()
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+
+    buffer = get_buffer()
+    assert buffer is not None
+    buffer.push(
+        UsageRecord(
+            request_id="req-1",
+            timestamp=1000.0,
+            provider="openai_compatible_1",
+            provider_model="gpt-4o",
+            gateway_model="gpt-4o",
+            wire_api="messages",
+            input_tokens=10,
+            output_tokens=20,
+            cache_creation_tokens=5,
+            cache_read_tokens=3,
+            reasoning_tokens=2,
+            duration_ms=100,
+            status="success",
+            error_type=None,
+            prompt="full prompt text",
+        )
+    )
+
+    response = _local_client(app).get("/admin/api/usage")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stats"]["total_requests"] == 1
+    assert payload["stats"]["total_input_tokens"] == 10
+    assert payload["stats"]["total_output_tokens"] == 20
+    record = payload["records"][0]
+    assert record["request_id"] == "req-1"
+    assert record["prompt"] == "full prompt text"
+    assert record["gateway_model"] == "gpt-4o"
+
+
+def test_admin_usage_route_is_loopback_only(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    app = create_test_app()
+
+    remote_client = TestClient(app, client=("203.0.113.10", 50000))
+    assert remote_client.get("/admin/api/usage").status_code == 403

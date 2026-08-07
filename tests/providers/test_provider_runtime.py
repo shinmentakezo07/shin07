@@ -49,6 +49,7 @@ from free_claude_code.providers.runtime import (
 from free_claude_code.providers.runtime.config import (
     openai_compatible_instance_ids,
 )
+from free_claude_code.providers.runtime.discovery import referenced_provider_ids
 from free_claude_code.providers.vertex import VertexProvider
 
 
@@ -314,6 +315,20 @@ def test_openai_compatible_instance_ids_number_by_position() -> None:
         "openai_compatible_1",
         "openai_compatible_2",
     )
+
+
+def test_referenced_provider_ids_skip_bare_model_ids() -> None:
+    """Bare model ids do not create fake providers for discovery."""
+    settings = _make_settings()
+    settings.model = "deepseek-chat"
+    settings.model_haiku = "nvidia_nim/meta/llama3"
+    settings.openai_compatible_instances = (
+        OpenAICompatibleInstance(
+            base_url="https://a.example/v1", models=("deepseek-chat",)
+        ),
+    )
+
+    assert referenced_provider_ids(settings) == ("nvidia_nim",)
 
 
 def test_create_numbered_openai_compatible_instance_provider() -> None:

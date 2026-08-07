@@ -34,6 +34,12 @@ export default defineConfig({
         // a cache layer ignores Cache-Control.
         entryFileNames: "assets/admin-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",
+        manualChunks: {
+          // Chart vendors split out so dashboard-heavy updates don't re-download
+          // the whole bundle and library code stays independently cacheable.
+          echarts: ["echarts/core", "echarts/charts", "echarts/components", "echarts/renderers"],
+          recharts: ["recharts"],
+        },
         assetFileNames: (info) => {
           if (info.name?.endsWith(".css")) return "assets/admin-[hash].css"
           return "assets/[name]-[hash][extname]"

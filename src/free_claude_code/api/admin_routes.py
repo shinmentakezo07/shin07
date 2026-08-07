@@ -239,6 +239,15 @@ async def models(
     return _model_options(services)
 
 
+@router.get("/admin/api/usage")
+async def usage_stats(
+    request: Request,
+    services: ApiServices = Depends(get_services),
+):
+    require_loopback_admin(request)
+    return services.admin.usage_stats()
+
+
 @router.post("/admin/api/models/refresh")
 async def refresh_models(
     request: Request,
@@ -266,12 +275,24 @@ def _model_options(
         for model in instance.models
         if model.strip()
     }
+    # The numbered-instance prefix is optional: bare ids resolve to whichever
+    # endpoint advertises them (round-robin across duplicates), so offer both.
+    stored_instance_model_ids = {
+        model.strip()
+        for index, instance in enumerate(settings.openai_compatible_instances, start=1)
+        if instance.base_url.strip()
+        for model in instance.models
+        if model.strip()
+    }
     failed_provider_ids = (
         refresh_result.failed_provider_ids if refresh_result is not None else ()
     )
     return {
         "models": sorted(
-            configured | discovered | stored_instance_models,
+            configured
+            | discovered
+            | stored_instance_models
+            | stored_instance_model_ids,
             key=str.casefold,
         ),
         "failed_providers": list(failed_provider_ids),

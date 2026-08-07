@@ -7,6 +7,7 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Repeat,
   Server,
   Star,
   Trash2,
@@ -274,7 +275,10 @@ function InstanceCard({
           {models.length > 0 ? (
             <div className="grid max-h-56 gap-1 overflow-auto">
               {models.map((model) => {
-                const isDefault = `${providerId}/${model}` === currentDefault
+                // The prefix is optional: a bare id also matches the default.
+                const isDefault =
+                  model === currentDefault ||
+                  `${providerId}/${model}` === currentDefault
                 return (
                   <div
                     key={model}
@@ -461,13 +465,14 @@ export function OpenAICompatibleView({
   }
 
   const useModelAsDefault = (index: number, model: string) => {
-    const route = `${providerIdFor(index)}/${model}`
-    onValuesChange({ ...values, MODEL: route })
+    // Set the bare id: the prefix is optional, so MODEL=deepseek routes to
+    // whatever endpoint advertises it (round-robin across duplicates).
+    onValuesChange({ ...values, MODEL: model })
     const current = instances[index]?.models ?? []
     if (!current.includes(model)) {
       updateInstance(index, { models: [...current, model] })
     }
-    onMessage(`Default model set to ${route}. Apply to save.`, "ok")
+    onMessage(`Default model set to ${model}. Apply to save.`, "ok")
   }
 
   if (!field) {
@@ -489,10 +494,27 @@ export function OpenAICompatibleView({
       ]),
     ]
   }
+  const keyCountFor = (index: number): number =>
+    (instances[index]?.api_keys ?? "")
+      .split(",")
+      .filter((key) => key.trim()).length
   const totalModels = instances.reduce(
     (sum, _instance, index) => sum + cardModels(index).length,
     0,
   )
+  // Model ids served by more than one endpoint rotate provider + key pool
+  // round-robin at runtime; surface that so it is never a surprise.
+  const duplicateModelIds = (() => {
+    const byModel = new Map<string, number[]>()
+    instances.forEach((_instance, index) => {
+      cardModels(index).forEach((model) => {
+        byModel.set(model, [...(byModel.get(model) ?? []), index])
+      })
+    })
+    return [...byModel.entries()]
+      .filter(([, indexes]) => indexes.length > 1)
+      .sort(([a], [b]) => a.localeCompare(b))
+  })()
 
   return (
     <section className="space-y-4">
@@ -502,12 +524,16 @@ export function OpenAICompatibleView({
           Add any OpenAI-compatible server (vLLM, LM Studio, Ollama, Together, or
           your own gateway). Each endpoint becomes a numbered provider:{" "}
           <code>openai_compatible_1/&lt;model&gt;</code>,{" "}
-          <code>openai_compatible_2/&lt;model&gt;</code>, … Add as many model ids
-          as you want per endpoint, comma-separated, or use{" "}
-          <strong>Fetch models</strong> to pull them from the endpoint's{" "}
-          <code>/models</code> route. Tick the models you want applied — selected
-          ids are saved with the endpoint on <strong>Apply</strong> and appear in
-          the Model Config dropdowns after a reload.
+          <code>openai_compatible_2/&lt;model&gt;</code>, … The prefix is
+          optional — a model id also works bare (<code>MODEL=deepseek</code>) and
+          resolves to whichever endpoint advertises it; when the same id exists
+          on several endpoints, requests rotate round-robin across providers and
+          key pools. Add as many model ids as you want per endpoint,
+          comma-separated, or use <strong>Fetch models</strong> to pull them from
+          the endpoint's <code>/models</code> route. Tick the models you want
+          applied — selected ids are saved with the endpoint on{" "}
+          <strong>Apply</strong> and appear in the Model Config dropdowns after a
+          reload.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Badge variant="outline" className="gap-1.5">
@@ -520,6 +546,34 @@ export function OpenAICompatibleView({
           </Badge>
         </div>
       </div>
+
+      {duplicateModelIds.length > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="flex items-center gap-2 text-sm font-medium text-amber-800 dark:text-amber-300">
+            <Repeat className="size-4 shrink-0" />
+            Model ids shared across endpoints rotate round-robin
+          </p>
+          <ul className="mt-2 space-y-1.5 text-sm text-amber-800/90 dark:text-amber-200/90">
+            {duplicateModelIds.map(([model, indexes]) => (
+              <li key={model}>
+                <code className="rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-500/15">
+                  {model}
+                </code>{" "}
+                is served by{" "}
+                {indexes
+                  .map(
+                    (index) =>
+                      `Endpoint ${index + 1} (${keyCountFor(index)} key${
+                        keyCountFor(index) === 1 ? "" : "s"
+                      })`,
+                  )
+                  .join(", ")}{" "}
+                — requests cycle across providers and key pools.
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {instances.length === 0 && legacyBaseUrl.trim() ? (
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 p-4">

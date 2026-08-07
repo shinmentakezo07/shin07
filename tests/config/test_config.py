@@ -1096,13 +1096,12 @@ class TestPerModelMapping:
         with pytest.raises(ValidationError, match="Invalid provider"):
             Settings()
 
-    def test_model_opus_no_slash_raises(self, monkeypatch):
-        """MODEL_OPUS without provider prefix raises ValidationError."""
+    def test_model_opus_bare_id_accepted(self, monkeypatch):
+        """MODEL_OPUS may be a bare id; the provider prefix is optional."""
         from free_claude_code.config.settings import Settings
 
         monkeypatch.setenv("MODEL_OPUS", "noprefix")
-        with pytest.raises(ValidationError, match="provider type"):
-            Settings()
+        assert Settings().model_opus == "noprefix"
 
     def test_model_haiku_invalid_provider_raises(self, monkeypatch):
         """MODEL_HAIKU with invalid provider prefix raises ValidationError."""
@@ -1321,6 +1320,23 @@ class TestPerModelMapping:
             == "Meta-Llama-3.3-70B-Instruct"
         )
         assert parse_model_name("cerebras/llama3.1-8b") == "llama3.1-8b"
+
+    def test_parse_model_name_bare_id_returns_whole(self):
+        """parse_model_name keeps bare ids whole; the prefix is optional."""
+        assert parse_model_name("deepseek-chat") == "deepseek-chat"
+        assert parse_model_name("shared-model") == "shared-model"
+
+    def test_configured_chat_model_refs_handles_bare_ids(self, monkeypatch):
+        """Bare configured ids yield provider_id/model_id equal to the id."""
+        from free_claude_code.config.settings import Settings
+
+        monkeypatch.setenv("MODEL", "deepseek-chat")
+        s = Settings()
+        s.model_haiku = None
+        refs = configured_chat_model_refs(s)
+        assert [ref.model_ref for ref in refs] == ["deepseek-chat"]
+        assert refs[0].provider_id == "deepseek-chat"
+        assert refs[0].model_id == "deepseek-chat"
 
     def test_configured_chat_model_refs_collects_unique_models(self, monkeypatch):
         """Model discovery is limited to configured chat references."""

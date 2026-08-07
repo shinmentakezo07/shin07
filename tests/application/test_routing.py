@@ -6,7 +6,7 @@ from free_claude_code.application.errors import UnknownProviderError
 from free_claude_code.application.routing import ModelRouter
 from free_claude_code.config.provider_catalog import PROVIDER_CATALOG
 from free_claude_code.config.reasoning import ReasoningPreference
-from free_claude_code.config.settings import Settings
+from free_claude_code.config.settings import OpenAICompatibleInstance, Settings
 from free_claude_code.core.anthropic.models import (
     Message,
     MessagesRequest,
@@ -306,3 +306,117 @@ def test_model_router_defers_instance_existence_to_provider_factory(settings):
 
     assert resolved.provider_id == "openai_compatible_999"
     assert resolved.provider_model == "some-model"
+
+
+def test_model_router_resolves_bare_endpoint_model(settings):
+    # The numbered-instance prefix is optional: a bare model id resolves to
+    # the single endpoint that advertises it.
+    settings.model = "deepseek-chat"
+    settings.openai_compatible_instances = (
+        OpenAICompatibleInstance(
+            base_url="https://one.example/v1",
+            api_keys="key-a,key-b",
+            models=("deepseek-chat",),
+        ),
+    )
+
+    resolved = ModelRouter(settings).resolve("claude-2.1")
+
+    assert resolved.provider_id == "openai_compatible_1"
+    assert resolved.provider_model == "deepseek-chat"
+    assert resolved.provider_model_ref == "openai_compatible_1/deepseek-chat"
+    assert resolved.reasoning_preference is ReasoningPreference.CLIENT
+
+
+def test_model_router_round_robins_bare_model_across_instances(settings):
+    # The same model id on several endpoints rotates provider (and its key
+    # pool) across requests instead of pinning one endpoint.
+    settings.model = "deepseek-chat"
+    settings.openai_compatible_instances = (
+        OpenAICompatibleInstance(
+            base_url="https://one.example/v1",
+            api_keys="key-a",
+            models=("deepseek-chat",),
+        ),
+        OpenAICompatibleInstance(
+            base_url="https://two.example/v1",
+            api_keys="key-b,key-c",
+            models=("deepseek-chat",),
+        ),
+    )
+    router = ModelRouter(settings)
+
+    first = router.resolve("claude-2.1")
+    second = router.resolve("claude-2.1")
+
+    assert {first.provider_id, second.provider_id} == {
+        "openai_compatible_1",
+        "openai_compatible_2",
+    }
+    assert first.provider_model_ref == f"{first.provider_id}/deepseek-chat"
+    assert second.provider_model_ref == f"{second.provider_id}/deepseek-chat"
+
+
+def test_model_router_logs_multi_provider_rotation_with_masked_keys(settings):
+    settings.model = "shared-model"
+    settings.openai_compatible_instances = (
+        OpenAICompatibleInstance(
+            base_url="https://one.example/v1",
+            api_keys="sk-abcdefgh12345678",
+            models=("shared-model",),
+        ),
+        OpenAICompatibleInstance(
+            base_url="https://two.example/v1",
+            api_keys="sk-zyxwvuts87654321",
+            models=("shared-model",),
+        ),
+    )
+
+    with patch("free_claude_code.application.routing.logger.info") as mock_log:
+        ModelRouter(settings).resolve("claude-2.1")
+
+    mock_log.assert_called_once()
+    message = mock_log.call_args[0][0].format(*mock_log.call_args[0][1:])
+    assert "MODEL MULTI-PROVIDER" in message
+    assert "openai_compatible_1" in message
+    assert "openai_compatible_2" in message
+    assert "1 key" in message
+    # Raw keys are never logged; only masked tails are.
+    assert "sk-abcdefgh12345678" not in message
+    assert "sk-zyxwvuts87654321" not in message
+    assert "…5678" in message
+    assert "…4321" in message
+
+
+def test_model_router_bare_endpoint_model_applies_route_reasoning(settings):
+    settings.model_opus = "deepseek-chat"
+    settings.reasoning_opus = ReasoningPreference.OFF
+    settings.openai_compatible_instances = (
+        OpenAICompatibleInstance(
+            base_url="https://one.example/v1",
+            api_keys="key-a",
+            models=("deepseek-chat",),
+        ),
+    )
+
+    resolved = ModelRouter(settings).resolve("claude-opus-4-20250514")
+
+    assert resolved.provider_id == "openai_compatible_1"
+    assert resolved.provider_model_ref == "openai_compatible_1/deepseek-chat"
+    assert resolved.reasoning_preference is ReasoningPreference.OFF
+
+
+def test_model_router_unknown_bare_model_still_raises(settings):
+    # A bare id that no endpoint advertises keeps the previous behavior:
+    # it is treated as an unknown provider type rather than silently routed.
+    settings.model = "no-such-model"
+    settings.openai_compatible_instances = (
+        OpenAICompatibleInstance(
+            base_url="https://one.example/v1",
+            api_keys="key-a",
+            models=("other-model",),
+        ),
+    )
+
+    with pytest.raises(UnknownProviderError):
+        ModelRouter(settings).resolve("claude-2.1")

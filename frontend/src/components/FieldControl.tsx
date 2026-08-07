@@ -155,6 +155,7 @@ interface FieldRowProps {
   modelOptions: string[]
   onValueChange: (key: string, value: string) => void
   onMessage: (text: string, kind?: string) => void
+  className?: string
 }
 
 export function FieldRow({
@@ -163,13 +164,14 @@ export function FieldRow({
   modelOptions,
   onValueChange,
   onMessage,
+  className,
 }: FieldRowProps) {
   const source = sourceText(field)
   return (
     <div
       className={cn(
         "flex flex-col gap-2.5 rounded-lg border bg-card/40 p-4 transition-colors hover:border-border/80",
-        field.advanced && "advanced-field hidden",
+        className,
       )}
       data-key={field.key}
     >

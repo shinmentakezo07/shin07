@@ -38,9 +38,19 @@ def _provider_query_failure_reason(exc: BaseException, settings: Settings) -> st
 
 
 def referenced_provider_ids(settings: Settings) -> tuple[str, ...]:
-    """Return unique provider ids referenced by configured chat models."""
+    """Return unique provider ids referenced by configured chat models.
+
+    Bare model ids (no provider prefix) are excluded: they resolve to
+    numbered OpenAI-compatible endpoints, which are covered by
+    ``openai_compatible_instance_ids`` instead.
+    """
+    instance_ids = set(openai_compatible_instance_ids(settings))
     return tuple(
-        dict.fromkeys(ref.provider_id for ref in configured_chat_model_refs(settings))
+        dict.fromkeys(
+            ref.provider_id
+            for ref in configured_chat_model_refs(settings)
+            if ref.provider_id in PROVIDER_CATALOG or ref.provider_id in instance_ids
+        )
     )
 
 

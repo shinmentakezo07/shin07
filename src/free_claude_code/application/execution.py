@@ -1,6 +1,7 @@
 """Provider execution shared by inbound API adapters."""
 
 import sys
+import time
 from collections.abc import AsyncIterator, Callable
 from typing import Literal
 
@@ -17,6 +18,12 @@ from free_claude_code.core.trace import (
     close_stream_input,
     trace_event,
     traced_async_stream,
+)
+from free_claude_code.core.usage_tracking import (
+    PendingUsageRecord,
+    UsageTrackingStream,
+    extract_prompt,
+    get_buffer,
 )
 
 from .ports import ProviderResolver
@@ -109,6 +116,22 @@ class ProviderExecutor:
             routed.request.tools,
         )
 
+        usage_tracking = get_buffer() is not None
+        pending = (
+            PendingUsageRecord(
+                request_id=request_id,
+                started_at=time.time(),
+                provider=routed.resolved.provider_id,
+                provider_model=routed.resolved.provider_model,
+                gateway_model=gateway_model,
+                wire_api=wire_api,
+                input_tokens=input_tokens,
+                prompt=extract_prompt(routed.request),
+            )
+            if usage_tracking
+            else None
+        )
+
         async def provider_body() -> AsyncIterator[str]:
             provider_stream: AsyncIterator[str] | None = None
             try:
@@ -138,8 +161,12 @@ class ProviderExecutor:
         if self._generation_id is not None:
             stream_trace["generation_id"] = self._generation_id
 
+        capture_stream: AsyncIterator[str] = provider_body()
+        if pending is not None:
+            capture_stream = UsageTrackingStream(capture_stream, pending)
+
         return traced_async_stream(
-            provider_body(),
+            capture_stream,
             stage="egress",
             source="api",
             complete_event=(

@@ -6,7 +6,7 @@ import logging
 import os
 import traceback
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Any
 
 from loguru import logger
@@ -34,9 +34,10 @@ from free_claude_code.config.env_files import (
     process_env_key_is_effective,
 )
 from free_claude_code.config.model_refs import parse_provider_type
-from free_claude_code.config.paths import messaging_state_dir_path
+from free_claude_code.config.paths import messaging_state_dir_path, usage_path
 from free_claude_code.config.server_urls import local_admin_url, local_proxy_root_url
 from free_claude_code.config.settings import Settings, get_settings
+from free_claude_code.core.usage_tracking import get_buffer, init_buffer
 from free_claude_code.messaging.platforms import factory as messaging_platform_factory
 from free_claude_code.messaging.platforms.factory import MessagingPlatformOptions
 from free_claude_code.messaging.platforms.ports import (
@@ -130,6 +131,7 @@ class ApplicationRuntime:
             None
         )
         self._cli_manager: cli_managed.ManagedClaudeSessionManager | None = None
+        self._usage_buffer = init_buffer(usage_path())
         self._started = False
         self._closed = False
         self._provider_manager_closed = False
@@ -260,6 +262,33 @@ class ApplicationRuntime:
 
     async def refresh_models(self) -> ProviderModelRefreshResult:
         return await self.provider_manager.refresh_model_list_cache()
+
+    def usage_stats(self) -> dict[str, Any]:
+        """Return usage aggregates plus the reverse-chronological request log."""
+        buffer = self._usage_buffer
+        if buffer is None:
+            buffer = get_buffer()
+        if buffer is None:
+            return {
+                "stats": {
+                    "total_requests": 0,
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "total_cache_creation_tokens": 0,
+                    "total_cache_read_tokens": 0,
+                    "total_reasoning_tokens": 0,
+                    "errors": 0,
+                    "cancelled": 0,
+                    "tpm": 0.0,
+                    "tps": 0.0,
+                },
+                "records": [],
+            }
+        records = buffer.query()
+        return {
+            "stats": buffer.stats(),
+            "records": [asdict(record) for record in records],
+        }
 
     async def connected_account_status(
         self, provider_id: str

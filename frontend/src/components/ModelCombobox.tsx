@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Check, ChevronDown, CornerDownLeft, X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -40,6 +41,8 @@ export function ModelCombobox({
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const listId = `model-options-${id ?? hash(fieldType)}`
 
   const values = useMemo(() => optionalModels(fieldType, models), [fieldType, models])
@@ -51,6 +54,12 @@ export function ModelCombobox({
   // typed or edited directly.
   const editing = open || query !== ""
   const displayed = editing ? query : value
+  const selectedValue =
+    fieldType === "optional_model" && (!value || value === "None") ? "None" : value
+  const draft = query.trim()
+  const draftIsOption = values.includes(draft)
+  const showDraftRow = open && draft !== "" && !draftIsOption
+  const canClear = !disabled && value !== "" && selectedValue !== "None"
 
   const close = (discardQuery: boolean) => {
     setOpen(false)
@@ -70,10 +79,9 @@ export function ModelCombobox({
   // Commit the draft text: an exact option wins, otherwise the typed text
   // is used as a custom model id.
   const commitDraft = () => {
-    const text = query.trim()
-    if (!text) return
-    const exact = values.find((item) => item === text)
-    commit(exact ?? text)
+    if (!draft) return
+    const exact = values.find((item) => item === draft)
+    commit(exact ?? draft)
   }
 
   const handleKeydown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -111,13 +119,33 @@ export function ModelCombobox({
     }
   }
 
+  // Close the list when the user clicks anywhere outside the combobox.
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && !wrapperRef.current?.contains(target)) close(true)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [open])
+
+  // Keep the active option visible while navigating with the keyboard.
+  useEffect(() => {
+    if (!open || activeIndex < 0) return
+    const active = listRef.current?.querySelector<HTMLElement>(
+      `[data-index="${activeIndex}"]`,
+    )
+    active?.scrollIntoView({ block: "nearest" })
+  }, [open, activeIndex])
+
   const activeId =
     open && activeIndex >= 0 && activeIndex < visible.length
       ? `${listId}-option-${activeIndex}`
       : undefined
 
   return (
-    <div className="relative">
+    <div ref={wrapperRef} className="relative">
       <div className="relative">
         <input
           ref={inputRef}
@@ -129,10 +157,13 @@ export function ModelCombobox({
           aria-expanded={open}
           aria-controls={listId}
           aria-activedescendant={activeId}
-          className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-colors outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+          className={cn(
+            "flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+            canClear ? "pr-16" : "pr-9",
+          )}
           value={displayed}
           disabled={disabled}
-          placeholder={fieldType === "optional_model" ? "None" : ""}
+          placeholder={fieldType === "optional_model" ? "None" : "Search or type a model id"}
           autoComplete="off"
           onClick={() => {
             if (!open) {
@@ -165,44 +196,122 @@ export function ModelCombobox({
             close(false)
           }}
         />
+        {canClear ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Clear model"
+            title="Clear model"
+            className="absolute inset-y-0 right-8 flex w-7 items-center justify-center text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              const cleared = fieldType === "optional_model" ? "None" : ""
+              onChange(cleared)
+              onCommit?.(cleared)
+              setQuery("")
+              inputRef.current?.focus()
+            }}
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={open ? "Close model list" : "Open model list"}
+          aria-expanded={open}
+          aria-controls={listId}
+          className="absolute inset-y-0 right-0 flex w-8 items-center justify-center rounded-r-md text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            if (open) {
+              close(true)
+              return
+            }
+            setQuery("")
+            setActiveIndex(-1)
+            setOpen(true)
+            inputRef.current?.focus()
+          }}
+        >
+          <ChevronDown
+            className={cn(
+              "size-4 transition-transform duration-200",
+              open && "rotate-180",
+            )}
+          />
+        </button>
       </div>
-      {open && (
+      {open ? (
         <div
+          ref={listRef}
           id={listId}
           role="listbox"
-          className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md"
+          aria-label="Model options"
+          className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-lg animate-in fade-in-0 zoom-in-95"
           onMouseDown={(event) => event.preventDefault()}
           onMouseMove={(event) => {
             const option = (event.target as HTMLElement).closest('[role="option"]')
-            if (option) setActiveIndex(visible.indexOf((option as HTMLElement).dataset.value ?? ""))
+            if (option) {
+              setActiveIndex(
+                visible.indexOf((option as HTMLElement).dataset.value ?? ""),
+              )
+            }
           }}
         >
+          {showDraftRow ? (
+            <div
+              role="option"
+              aria-selected="false"
+              className="mb-1 flex cursor-pointer items-center gap-2 rounded-sm border-b px-2 py-1.5 text-sm text-primary"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => commitDraft()}
+            >
+              <CornerDownLeft className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                Use &quot;{draft}&quot;
+              </span>
+            </div>
+          ) : null}
           {visible.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              {models.length
-                ? "No matching models. Press Enter to use your typed model id."
-                : "No discovered models. Type a model id and press Enter, or refresh models."}
+            <div className="px-2 py-2 text-sm text-muted-foreground">
+              {showDraftRow
+                ? "Press Enter to use this model id."
+                : models.length
+                  ? "No matching models. Type a model id and press Enter."
+                  : "No discovered models. Type a model id and press Enter, or refresh models."}
             </div>
           ) : (
-            visible.map((option, index) => (
-              <div
-                key={option}
-                id={`${listId}-option-${index}`}
-                role="option"
-                data-value={option}
-                aria-selected={index === activeIndex}
-                className={cn(
-                  "px-3 py-2 text-sm",
-                  index === activeIndex && "bg-accent",
-                )}
-                onClick={() => commit(option)}
-              >
-                {option}
-              </div>
-            ))
+            visible.map((option, index) => {
+              const isSelected = option === selectedValue
+              return (
+                <div
+                  key={option}
+                  id={`${listId}-option-${index}`}
+                  role="option"
+                  data-value={option}
+                  data-index={index}
+                  aria-selected={isSelected || index === activeIndex}
+                  className={cn(
+                    "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors",
+                    index === activeIndex && "bg-accent text-accent-foreground",
+                    isSelected && "font-medium text-foreground",
+                  )}
+                  onClick={() => commit(option)}
+                >
+                  <Check
+                    className={cn(
+                      "size-4 shrink-0",
+                      isSelected ? "text-primary opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{option}</span>
+                </div>
+              )
+            })
           )}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

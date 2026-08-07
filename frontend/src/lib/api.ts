@@ -6,6 +6,7 @@ import type {
   ModelOptionsResult,
   PoolKeysResult,
   ProviderTestResult,
+  UsageResult,
   ValidationResult,
 } from "./types"
 
@@ -92,4 +93,8 @@ export function fetchModelOptions(refresh = false): Promise<ModelOptionsResult> 
 
 export function fetchPoolKeys(fieldKey: string): Promise<PoolKeysResult> {
   return api<PoolKeysResult>(`/admin/api/pools/${encodeURIComponent(fieldKey)}`)
+}
+
+export function fetchUsageStats(): Promise<UsageResult> {
+  return api<UsageResult>("/admin/api/usage")
 }

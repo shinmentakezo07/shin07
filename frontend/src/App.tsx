@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
   type LucideIcon,
+  Gauge,
   Menu,
   MessageSquare,
   Plug,
@@ -33,6 +34,7 @@ import { ConfigView } from "./components/ConfigView"
 import { OpenAICompatibleView } from "./components/OpenAICompatibleView"
 import { ProvidersView } from "./components/ProvidersView"
 import { Sidebar } from "./components/Sidebar"
+import { UsageView } from "./components/UsageView"
 import { ThemeToggle } from "./components/ThemeToggle"
 import { Badge } from "./components/ui/badge"
 import { Button } from "./components/ui/button"
@@ -87,10 +89,27 @@ export const VIEW_GROUPS: ViewGroup[] = [
     sections: ["messaging", "voice"],
     icon: MessageSquare,
   },
+  {
+    id: "usage",
+    label: "Usage",
+    title: "Usage",
+    description: "Token throughput and recent request logs",
+    path: "usage",
+    sections: [],
+    icon: Gauge,
+  },
 ]
 
 function viewFromPath(path: string): string {
   return VIEW_GROUPS.find((view) => view.path === path)?.id ?? "providers"
+}
+// Numbered OpenAI-compatible endpoints ("openai_compatible_1", ...) are
+// routable by bare model id; the provider prefix is optional for them.
+function isNumberedInstance(providerId: string): boolean {
+  return /^openai_compatible_\d+$/.test(providerId)
+}
+function endpointModelOption(providerId: string, model: string): string {
+  return isNumberedInstance(providerId) ? model : `${providerId}/${model}`
 }
 
 function pathFromHash(): string {
@@ -387,7 +406,7 @@ export default function App() {
           setModelOptions((prev) => [
             ...new Set([
               ...prev,
-              ...result.models.map((model) => `${providerId}/${model}`),
+              ...result.models.map((model) => endpointModelOption(providerId, model)),
             ]),
           ])
           setMessageOk("Models refreshed")
@@ -427,7 +446,7 @@ export default function App() {
         setModelOptions((prev) => [
           ...new Set([
             ...prev,
-            ...result.models.map((model) => `${providerId}/${model}`),
+            ...result.models.map((model) => endpointModelOption(providerId, model)),
           ]),
         ])
         return result.models
@@ -447,7 +466,7 @@ export default function App() {
       setModelOptions((prev) => [
         ...new Set([
           ...prev,
-          ...models.map((model) => `${providerId}/${model}`),
+          ...models.map((model) => endpointModelOption(providerId, model)),
         ]),
       ])
     },
@@ -673,6 +692,8 @@ export default function App() {
               onMessage={showMessage}
             />
           )}
+
+          {activeView === "usage" && <UsageView />}
 
           <ConfigView
             config={config}

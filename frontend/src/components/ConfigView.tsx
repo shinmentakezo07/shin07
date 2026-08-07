@@ -13,7 +13,9 @@ import {
 
 import { VIEW_GROUPS } from "@/App"
 import type { AdminConfig, AdminSection } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { FieldRow } from "./FieldControl"
+import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Card, CardContent } from "./ui/card"
 
@@ -102,7 +104,7 @@ function SettingsSection({
   const fieldRows = (showAdvanced: boolean) =>
     fields
       .filter((field) => !field.advanced || showAdvanced)
-      .map((field) => (
+      .map((field, index) => (
         <FieldRow
           key={field.key}
           field={field}
@@ -110,6 +112,7 @@ function SettingsSection({
           modelOptions={modelOptions}
           onValueChange={(key, value) => onValuesChange({ ...values, [key]: value })}
           onMessage={() => undefined}
+          className={cn(isModelSection && index === 0 && "md:col-span-2")}
         />
       ))
 
@@ -131,21 +134,32 @@ function SettingsSection({
             </div>
           </div>
           {isModelSection ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={refreshing}
-              onClick={() => {
-                setRefreshing(true)
-                onRefreshModels("__refresh_models__", () => setRefreshing(false))
-              }}
-            >
-              <RefreshCw className={refreshing ? "animate-spin" : undefined} />
-              {refreshing ? "Refreshing" : "Refresh models"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {modelOptions.length > 0 ? (
+                <Badge variant="secondary" className="gap-1.5 font-normal">
+                  <Brain className="size-3.5" />
+                  {modelOptions.length} model
+                  {modelOptions.length === 1 ? "" : "s"}
+                </Badge>
+              ) : null}
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={refreshing}
+                onClick={() => {
+                  setRefreshing(true)
+                  onRefreshModels("__refresh_models__", () => setRefreshing(false))
+                }}
+              >
+                <RefreshCw className={refreshing ? "animate-spin" : undefined} />
+                {refreshing ? "Refreshing" : "Refresh models"}
+              </Button>
+            </div>
           ) : null}
         </div>
-        <div className="grid gap-3">{fieldRows(advancedOpen)}</div>
+        <div className={cn("grid gap-3", isModelSection && "md:grid-cols-2")}>
+          {fieldRows(advancedOpen)}
+        </div>
         {hasAdvanced ? (
           <Button
             type="button"
