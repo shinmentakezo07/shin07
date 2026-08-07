@@ -351,7 +351,8 @@ def test_admin_static_model_combobox_preserves_custom_slugs_and_none_semantics()
     )
 
     assert '["None", ...models]' in script
-    assert "You can still enter a custom slug." in script
+    assert "Press Enter to use your typed model id." in script
+    assert "commitDraft" in script
     assert 'case "optional_model":' in control
     assert 'fieldType === "optional_model"' in script
     assert "hydrateModelOptions" in app_source

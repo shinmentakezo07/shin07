@@ -45,18 +45,35 @@ export function ModelCombobox({
   const values = useMemo(() => optionalModels(fieldType, models), [fieldType, models])
   const visible = useMemo(() => filterOptions(values, query), [values, query])
 
-  const close = () => {
+  // While the user is editing (list open or draft text present) the input
+  // shows the draft; otherwise it shows the committed value. Whatever text
+  // is in the box is the value once the user leaves, so model ids can be
+  // typed or edited directly.
+  const editing = open || query !== ""
+  const displayed = editing ? query : value
+
+  const close = (discardQuery: boolean) => {
     setOpen(false)
     setActiveIndex(-1)
+    if (discardQuery) setQuery("")
     inputRef.current?.removeAttribute("aria-activedescendant")
   }
 
-  const select = (selected: string) => {
-    onChange(selected)
-    onCommit?.(selected)
+  const commit = (next: string) => {
+    onChange(next)
+    onCommit?.(next)
     setQuery("")
-    close()
+    close(false)
     inputRef.current?.focus()
+  }
+
+  // Commit the draft text: an exact option wins, otherwise the typed text
+  // is used as a custom model id.
+  const commitDraft = () => {
+    const text = query.trim()
+    if (!text) return
+    const exact = values.find((item) => item === text)
+    commit(exact ?? text)
   }
 
   const handleKeydown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -65,7 +82,9 @@ export function ModelCombobox({
       if (open) {
         const count = visible.length
         if (count === 0) return
-        setActiveIndex((prev) => (prev + (event.key === "ArrowDown" ? 1 : -1) + count) % count)
+        setActiveIndex(
+          (prev) => (prev + (event.key === "ArrowDown" ? 1 : -1) + count) % count,
+        )
       } else {
         setOpen(true)
         if (event.key === "ArrowUp") setActiveIndex(visible.length - 1)
@@ -76,15 +95,19 @@ export function ModelCombobox({
     } else if (open && event.key === "End") {
       event.preventDefault()
       setActiveIndex(visible.length - 1)
-    } else if (open && event.key === "Enter") {
+    } else if (event.key === "Enter") {
       event.preventDefault()
-      const active = visible[activeIndex]
-      if (active) select(active)
+      const active =
+        open && activeIndex >= 0 && activeIndex < visible.length
+          ? visible[activeIndex]
+          : undefined
+      if (active) commit(active)
+      else commitDraft()
     } else if (open && event.key === "Escape") {
       event.preventDefault()
-      close()
+      close(true)
     } else if (open && event.key === "Tab") {
-      close()
+      close(false)
     }
   }
 
@@ -107,19 +130,39 @@ export function ModelCombobox({
           aria-controls={listId}
           aria-activedescendant={activeId}
           className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-colors outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-          value={value === "None" ? "None" : value}
+          value={displayed}
           disabled={disabled}
           placeholder={fieldType === "optional_model" ? "None" : ""}
           autoComplete="off"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            if (!open) {
+              setQuery("")
+              setActiveIndex(-1)
+            }
+            setOpen(true)
+          }}
           onInput={(event) => {
+            const text = (event.target as HTMLInputElement).value
             if (!open) setOpen(true)
-            setQuery((event.target as HTMLInputElement).value)
+            setQuery(text)
+            setActiveIndex(-1)
           }}
           onKeyDown={handleKeydown}
           onBlur={() => {
-            if (fieldType === "optional_model" && !value.trim()) onCommit?.("None")
-            close()
+            // WYSIWYG: whatever is in the box becomes the value. An exact
+            // option match selects the canonical option; any other non-empty
+            // draft is committed as a custom model id.
+            if (query.trim() && query !== value) {
+              const exact = values.find((item) => item === query)
+              const next = exact ?? query
+              onChange(next)
+              onCommit?.(next)
+            } else if (fieldType === "optional_model" && !value.trim()) {
+              onChange("None")
+              onCommit?.("None")
+            }
+            setQuery("")
+            close(false)
           }}
         />
       </div>
@@ -137,8 +180,8 @@ export function ModelCombobox({
           {visible.length === 0 ? (
             <div className="px-3 py-2 text-sm text-muted-foreground">
               {models.length
-                ? "No matching models. You can still enter a custom slug."
-                : "No discovered models. Refresh models or enter a custom slug."}
+                ? "No matching models. Press Enter to use your typed model id."
+                : "No discovered models. Type a model id and press Enter, or refresh models."}
             </div>
           ) : (
             visible.map((option, index) => (
@@ -152,7 +195,7 @@ export function ModelCombobox({
                   "px-3 py-2 text-sm",
                   index === activeIndex && "bg-accent",
                 )}
-                onClick={() => select(option)}
+                onClick={() => commit(option)}
               >
                 {option}
               </div>
