@@ -1,7 +1,9 @@
 import { useState } from "react"
+import { Info } from "lucide-react"
 
 import type { AdminField } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { Badge } from "./ui/badge"
 import { Checkbox } from "./ui/checkbox"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
@@ -162,10 +164,11 @@ export function FieldRow({
   onValueChange,
   onMessage,
 }: FieldRowProps) {
+  const source = sourceText(field)
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-lg border p-4",
+        "flex flex-col gap-2.5 rounded-lg border bg-card/40 p-4 transition-colors hover:border-border/80",
         field.advanced && "advanced-field hidden",
       )}
       data-key={field.key}
@@ -174,7 +177,14 @@ export function FieldRow({
         <Label htmlFor={field.type === "boolean" ? undefined : `field-${field.key}`}>
           <span className="text-sm font-medium">{field.label}</span>
         </Label>
-        <span className="text-xs text-muted-foreground">{sourceText(field)}</span>
+        {source ? (
+          <Badge
+            variant="outline"
+            className="gap-1 px-1.5 py-0 text-[10px] font-medium text-muted-foreground"
+          >
+            {source}
+          </Badge>
+        ) : null}
       </div>
       <FieldControl
         field={field}
@@ -184,7 +194,10 @@ export function FieldRow({
         onMessage={onMessage}
       />
       {field.description ? (
-        <p className="text-xs text-muted-foreground">{field.description}</p>
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0 opacity-70" />
+          <span>{field.description}</span>
+        </p>
       ) : null}
     </div>
   )

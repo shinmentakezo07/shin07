@@ -254,18 +254,26 @@ def _model_options(
     *,
     refresh_result: ProviderModelRefreshResult | None = None,
 ) -> dict[str, list[str]]:
-    configured = {
-        ref.model_ref
-        for ref in configured_chat_model_refs(services.requests.current_settings())
-    }
+    settings = services.requests.current_settings()
+    configured = {ref.model_ref for ref in configured_chat_model_refs(settings)}
     discovered = {
         info.model_id for info in services.requests.cached_prefixed_model_infos()
+    }
+    stored_instance_models = {
+        f"openai_compatible_{index}/{model.strip()}"
+        for index, instance in enumerate(settings.openai_compatible_instances, start=1)
+        if instance.base_url.strip()
+        for model in instance.models
+        if model.strip()
     }
     failed_provider_ids = (
         refresh_result.failed_provider_ids if refresh_result is not None else ()
     )
     return {
-        "models": sorted(configured | discovered, key=str.casefold),
+        "models": sorted(
+            configured | discovered | stored_instance_models,
+            key=str.casefold,
+        ),
         "failed_providers": list(failed_provider_ids),
     }
 

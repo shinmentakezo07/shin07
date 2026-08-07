@@ -1,9 +1,31 @@
 import { useMemo, useState } from "react"
+import {
+  Brain,
+  Gauge,
+  Globe,
+  Lightbulb,
+  MessageSquare,
+  Mic,
+  RefreshCw,
+  Server,
+  type LucideIcon,
+} from "lucide-react"
 
 import { VIEW_GROUPS } from "@/App"
 import type { AdminConfig, AdminSection } from "@/lib/types"
 import { FieldRow } from "./FieldControl"
 import { Button } from "./ui/button"
+import { Card, CardContent } from "./ui/card"
+
+const SECTION_ICONS: Record<string, LucideIcon> = {
+  providers: Server,
+  runtime: Gauge,
+  models: Brain,
+  reasoning: Lightbulb,
+  web_tools: Globe,
+  messaging: MessageSquare,
+  voice: Mic,
+}
 
 interface ConfigViewProps {
   config: AdminConfig
@@ -75,6 +97,7 @@ function SettingsSection({
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const isModelSection = section.id === "models"
+  const SectionIcon = SECTION_ICONS[section.id] ?? Server
 
   const fieldRows = (showAdvanced: boolean) =>
     fields
@@ -91,41 +114,50 @@ function SettingsSection({
       ))
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold">{section.label}</h3>
-          {section.description ? (
-            <p className="text-sm text-muted-foreground">{section.description}</p>
+    <Card className="gap-0 overflow-hidden">
+      <CardContent className="flex flex-col gap-4 px-5 py-4 md:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <SectionIcon className="size-4.5" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold leading-tight">
+                {section.label}
+              </h3>
+              {section.description ? (
+                <p className="text-sm text-muted-foreground">{section.description}</p>
+              ) : null}
+            </div>
+          </div>
+          {isModelSection ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={refreshing}
+              onClick={() => {
+                setRefreshing(true)
+                onRefreshModels("__refresh_models__", () => setRefreshing(false))
+              }}
+            >
+              <RefreshCw className={refreshing ? "animate-spin" : undefined} />
+              {refreshing ? "Refreshing" : "Refresh models"}
+            </Button>
           ) : null}
         </div>
-        {isModelSection ? (
+        <div className="grid gap-3">{fieldRows(advancedOpen)}</div>
+        {hasAdvanced ? (
           <Button
-            variant="secondary"
+            type="button"
+            variant="ghost"
             size="sm"
-            disabled={refreshing}
-            onClick={() => {
-              setRefreshing(true)
-              onRefreshModels("__refresh_models__", () => setRefreshing(false))
-            }}
+            className="self-start text-muted-foreground"
+            onClick={() => setAdvancedOpen((prev) => !prev)}
           >
-            {refreshing ? "Refreshing" : "Refresh models"}
+            {advancedOpen ? "Hide advanced" : "Show advanced"}
           </Button>
         ) : null}
-      </div>
-      <div className="grid gap-4">
-        {fieldRows(advancedOpen)}
-      </div>
-      {hasAdvanced ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setAdvancedOpen((prev) => !prev)}
-        >
-          {advancedOpen ? "Hide advanced" : "Show advanced"}
-        </Button>
-      ) : null}
-    </section>
+      </CardContent>
+    </Card>
   )
 }

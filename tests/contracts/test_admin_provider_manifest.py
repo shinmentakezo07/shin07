@@ -259,7 +259,8 @@ def test_openai_compatible_instance_status_entries_numbered() -> None:
     state = {
         "OPENAI_COMPATIBLE_INSTANCES": {
             "value": (
-                '[{"base_url": "https://a.example/v1", "api_keys": "k1"}, '
+                '[{"base_url": "https://a.example/v1", "api_keys": "k1", '
+                '"models": ["gpt-4o"]}, '
                 '{"base_url": ""}]'
             )
         },
@@ -278,6 +279,8 @@ def test_openai_compatible_instance_status_entries_numbered() -> None:
     assert by_provider["openai_compatible_1"]["display_name"] == (
         "OpenAI-Compatible Endpoint #1"
     )
+    assert by_provider["openai_compatible_1"]["models"] == ["gpt-4o"]
 
     assert by_provider["openai_compatible_2"]["status"] == "missing_config"
     assert by_provider["openai_compatible_2"]["label"] == "Missing base URL"
+    assert by_provider["openai_compatible_2"]["models"] == []

@@ -114,6 +114,15 @@ def _openai_compatible_instance_statuses(raw: str) -> list[dict[str, Any]]:
             continue
         base_url = str(instance.get("base_url", "") or "")
         configured = bool(base_url.strip())
+        raw_models = instance.get("models")
+        if isinstance(raw_models, list):
+            models = [
+                str(model)
+                for model in raw_models
+                if isinstance(model, str) and model.strip()
+            ]
+        else:
+            models = []
         statuses.append(
             {
                 "provider_id": f"openai_compatible_{index}",
@@ -123,6 +132,7 @@ def _openai_compatible_instance_statuses(raw: str) -> list[dict[str, Any]]:
                 "label": "Configured" if configured else "Missing base URL",
                 "base_url": base_url,
                 "configuration": "OPENAI_COMPATIBLE_BASE_URL",
+                "models": models,
             }
         )
     return statuses

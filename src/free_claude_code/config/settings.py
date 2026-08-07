@@ -27,6 +27,11 @@ class OpenAICompatibleInstance(BaseModel):
     base_url: str = ""
     api_keys: str = ""
     proxy: str = ""
+    # Model ids applied to this endpoint from the admin "OpenAI-Compatible
+    # Endpoints" page. Each id is routable as ``openai_compatible_N/<model>``
+    # and listed in the admin model options even when the endpoint's live
+    # ``/models`` route is unreachable.
+    models: tuple[str, ...] = ()
 
 
 class Settings(BaseSettings):

@@ -96,6 +96,16 @@ When unsure between PATCH and MINOR, prefer PATCH for fixes and MINOR for new ca
 
 Example commit on `main` after a packaging fix: bump `1.2.38` → `1.2.39`, run `uv lock`, commit together with the fix.
 
+## COMMIT & PUSH POLICY
+
+- Never commit or push automatically. Only commit or push when the user
+  explicitly asks you to ("commit", "push", "commit and push", or similar).
+- When work is finished and the user has not asked to commit or push, stop
+  and ask. Leave the working tree and staged state exactly as they are.
+- Do not stage, amend, or rewrite commits as a side effect of other work.
+- When the user does ask, review the diff first (`git status`, `git diff`)
+  and report what will be committed before committing.
+
 ## SUMMARY STANDARDS
 
 - Summaries must be technical and granular.

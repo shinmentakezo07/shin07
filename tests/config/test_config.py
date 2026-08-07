@@ -673,6 +673,31 @@ class TestOpenAICompatibleInstances:
             ),
         )
 
+    def test_instances_parse_applied_models(self, monkeypatch):
+        """Applied model ids persist per instance and default to empty."""
+        from free_claude_code.config.settings import (
+            OpenAICompatibleInstance,
+            Settings,
+        )
+
+        monkeypatch.setenv(
+            "OPENAI_COMPATIBLE_INSTANCES",
+            '[{"base_url": "https://a.example/v1", "models": ["gpt-4o", '
+            '"deepseek-v3"]}, {"base_url": "https://b.example"}]',
+        )
+        monkeypatch.setitem(Settings.model_config, "env_file", ())
+
+        instances = Settings().openai_compatible_instances
+
+        assert instances == (
+            OpenAICompatibleInstance(
+                base_url="https://a.example/v1",
+                models=("gpt-4o", "deepseek-v3"),
+            ),
+            OpenAICompatibleInstance(base_url="https://b.example"),
+        )
+        assert instances[1].models == ()
+
     def test_instances_empty_json_array(self, monkeypatch):
         """'[]' decodes to an empty tuple."""
         from free_claude_code.config.settings import Settings

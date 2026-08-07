@@ -250,10 +250,11 @@ fcc-codex exec "hello"
   on, where the number is the endpoint's position in the list. Give each
   endpoint its own base URL, optional comma-separated key pool, and optional
   proxy, then use the numbered routes in `MODEL` so it is easy to see which
-  endpoint a request uses. **Fetch models** pulls the endpoint's model ids
-  from its `/models` route, lists them on the card, and makes them selectable
-  in the Model Config dropdowns; "Use as default" sets the numbered route as
-  the default model. Endpoint 1 also answers the legacy
+  endpoint a request uses. Add as many model ids as you want per endpoint
+  (comma-separated entries), or **Fetch models** to pull the endpoint's model
+  ids from its `/models` route; both list on the card and are selectable in
+  the Model Config dropdowns. "Use as default" sets the numbered route as the
+  default model. Endpoint 1 also answers the legacy
   `openai_compatible/<model-id>` route; the single-endpoint env vars remain
   the fallback when no endpoints are configured.
 - Mistral Codestral uses a separate key from Mistral La Plateforme.

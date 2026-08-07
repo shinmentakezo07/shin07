@@ -1,4 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  type LucideIcon,
+  Menu,
+  MessageSquare,
+  Plug,
+  Server,
+  SlidersHorizontal,
+  X,
+} from "lucide-react"
 
 import {
   applyConfig,
@@ -24,6 +33,10 @@ import { ConfigView } from "./components/ConfigView"
 import { OpenAICompatibleView } from "./components/OpenAICompatibleView"
 import { ProvidersView } from "./components/ProvidersView"
 import { Sidebar } from "./components/Sidebar"
+import { ThemeToggle } from "./components/ThemeToggle"
+import { Badge } from "./components/ui/badge"
+import { Button } from "./components/ui/button"
+import { Skeleton } from "./components/ui/skeleton"
 
 export const MASKED_SECRET = "********"
 
@@ -31,8 +44,10 @@ interface ViewGroup {
   id: string
   label: string
   title: string
+  description: string
   path: string
   sections: string[]
+  icon: LucideIcon
 }
 
 export const VIEW_GROUPS: ViewGroup[] = [
@@ -40,29 +55,37 @@ export const VIEW_GROUPS: ViewGroup[] = [
     id: "providers",
     label: "Providers",
     title: "Providers",
+    description: "Check connectivity and manage provider credentials",
     path: "providers",
     sections: ["providers", "runtime"],
+    icon: Server,
   },
   {
     id: "model_config",
     label: "Model Config",
     title: "Model Config",
+    description: "Choose models, reasoning behavior, and web tooling",
     path: "model-config",
     sections: ["models", "reasoning", "web_tools"],
+    icon: SlidersHorizontal,
   },
   {
     id: "openai_compatible",
     label: "OpenAI-Compatible",
     title: "OpenAI-Compatible Endpoints",
+    description: "Add any OpenAI-compatible server as a numbered provider",
     path: "openai-compatible",
     sections: [],
+    icon: Plug,
   },
   {
     id: "messaging",
     label: "Messaging",
     title: "Messaging",
+    description: "Chat platforms and voice integration",
     path: "messaging",
     sections: ["messaging", "voice"],
+    icon: MessageSquare,
   },
 ]
 
@@ -138,6 +161,7 @@ export default function App() {
   const [message, setMessage] = useState<{ text: string; kind?: string } | null>(null)
   const [activeView, setActiveView] = useState<string>(() => syncActiveView())
   const [applying, setApplying] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const authTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const setMessageOk = useCallback((text: string) => setMessage({ text }), [])
@@ -286,8 +310,13 @@ export default function App() {
     void load()
     const onHashChange = () => setActiveView(viewFromPath(pathFromHash()))
     window.addEventListener("hashchange", onHashChange)
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileNavOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
     return () => {
       window.removeEventListener("hashchange", onHashChange)
+      window.removeEventListener("keydown", onKeyDown)
       for (const timer of Object.values(authTimers.current)) clearTimeout(timer)
       authTimers.current = {}
     }
@@ -412,6 +441,19 @@ export default function App() {
     [setMessageError],
   )
 
+  const handleAddEndpointModels = useCallback(
+    (providerId: string, models: string[]) => {
+      if (models.length === 0) return
+      setModelOptions((prev) => [
+        ...new Set([
+          ...prev,
+          ...models.map((model) => `${providerId}/${model}`),
+        ]),
+      ])
+    },
+    [],
+  )
+
   const handleRefreshModels = useCallback(
     async (_providerId: string, done?: () => void) => {
       try {
@@ -501,11 +543,31 @@ export default function App() {
 
   if (!config) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Loading admin config...</p>
+      <div className="flex min-h-screen">
+        <aside className="hidden w-64 shrink-0 flex-col gap-3 border-r p-4 md:flex">
+          <Skeleton className="h-10 w-full" />
+          <div className="mt-3 space-y-2">
+            <Skeleton className="h-9 w-5/6" />
+            <Skeleton className="h-9 w-4/6" />
+            <Skeleton className="h-9 w-3/6" />
+          </div>
+        </aside>
+        <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 md:p-6">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-36 w-full" />
+          <Skeleton className="h-36 w-full" />
+          <Skeleton className="h-36 w-full" />
+        </main>
       </div>
     )
   }
+
+  const activeGroup =
+    VIEW_GROUPS.find((view) => view.id === activeView) ?? VIEW_GROUPS[0]
+  const ActiveIcon = activeGroup.icon
 
   return (
     <div className="flex min-h-screen">
@@ -513,20 +575,77 @@ export default function App() {
         config={config}
         activeView={activeView}
         onSelectView={handleSelectView}
+        className="hidden md:flex"
       />
+      {mobileNavOpen ? (
+        <div
+          className="fixed inset-0 z-50 md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Admin navigation"
+        >
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setMobileNavOpen(false)}
+          />
+          <Sidebar
+            config={config}
+            activeView={activeView}
+            onSelectView={handleSelectView}
+            onNavigate={() => setMobileNavOpen(false)}
+            className="animate-in slide-in-from-left absolute inset-y-0 left-0 shadow-2xl"
+          />
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="absolute top-4 right-4 flex size-8 items-center justify-center rounded-md text-white/80 hover:bg-white/10 hover:text-white"
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+      ) : null}
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b px-6 py-4">
-          <h2 className="text-2xl font-semibold">
-            {VIEW_GROUPS.find((view) => view.id === activeView)?.title ?? "Providers"}
-          </h2>
-          {config.version ? (
-            <span className="rounded-full border border-input px-2.5 py-0.5 text-xs text-muted-foreground">
-              v{config.version}
-            </span>
-          ) : null}
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b bg-background/80 px-4 py-3 backdrop-blur-md md:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              aria-label="Open navigation"
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu />
+            </Button>
+            <div className="hidden size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary md:flex">
+              <ActiveIcon className="size-4.5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold leading-tight">
+                {activeGroup.title}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {activeGroup.description}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {config.version ? (
+              <Badge
+                variant="outline"
+                className="hidden font-mono text-muted-foreground sm:inline-flex"
+              >
+                v{config.version}
+              </Badge>
+            ) : null}
+            <ThemeToggle />
+          </div>
         </header>
 
-        <div className="flex-1 space-y-8 p-6">
+        <div className="flex-1 space-y-8 p-4 md:p-6">
           {activeView === "providers" && (
             <ProvidersView
               config={config}
@@ -550,6 +669,7 @@ export default function App() {
               localStatus={localStatus}
               onTestProvider={handleTestProvider}
               onFetchModels={handleFetchEndpointModels}
+              onAddModels={handleAddEndpointModels}
               onMessage={showMessage}
             />
           )}

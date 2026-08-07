@@ -1,13 +1,29 @@
 import { useEffect, useState } from "react"
+import {
+  Cable,
+  Check,
+  ListChecks,
+  ListPlus,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Server,
+  Star,
+  Trash2,
+} from "lucide-react"
 
+import { statusClass } from "@/App"
 import type {
   AdminConfig,
   LocalProviderStatus,
   OpenAICompatibleInstance,
 } from "@/lib/types"
+import { statusDotClass } from "@/lib/status"
+import { cn } from "@/lib/utils"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Card, CardContent } from "./ui/card"
+import { Checkbox } from "./ui/checkbox"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 
@@ -20,6 +36,7 @@ interface OpenAICompatibleViewProps {
   localStatus: Record<string, LocalProviderStatus>
   onTestProvider: (providerId: string, done?: () => void) => void
   onFetchModels: (providerId: string) => Promise<string[]>
+  onAddModels: (providerId: string, models: string[]) => void
   onMessage: (text: string, kind?: string) => void
 }
 
@@ -70,14 +87,6 @@ function statusFor(
   }
 }
 
-function badgeVariant(status: string): "ok" | "warn" | "error" | "neutral" {
-  if (["configured", "reachable"].includes(status)) return "ok"
-  if (["missing_key", "missing_config", "missing_url", "unknown"].includes(status))
-    return "warn"
-  if (["offline", "error"].includes(status)) return "error"
-  return "neutral"
-}
-
 interface InstanceCardProps {
   index: number
   instance: OpenAICompatibleInstance
@@ -86,11 +95,15 @@ interface InstanceCardProps {
   testing: boolean
   fetching: boolean
   models: string[]
+  selected: string[]
+  currentDefault: string
   onPatch: (patch: Partial<OpenAICompatibleInstance>) => void
   onRemove: () => void
   onTest: () => void
   onFetch: () => void
   onClearModels: () => void
+  onAddModels: (models: string[]) => void
+  onToggleModel: (model: string) => void
   onUseModel: (model: string) => void
 }
 
@@ -102,35 +115,63 @@ function InstanceCard({
   testing,
   fetching,
   models,
+  selected,
+  currentDefault,
   onPatch,
   onRemove,
   onTest,
   onFetch,
   onClearModels,
+  onAddModels,
+  onToggleModel,
   onUseModel,
 }: InstanceCardProps) {
   const providerId = providerIdFor(index)
   const canProbe = !locked && Boolean(instance.base_url.trim())
+  const [modelDraft, setModelDraft] = useState("")
+
+  const addFromDraft = () => {
+    const ids = modelDraft
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+    if (ids.length === 0) return
+    onAddModels(ids)
+    setModelDraft("")
+  }
+
   return (
-    <Card>
+    <Card className="overflow-hidden">
       <CardContent className="flex flex-col gap-4 py-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <h4 className="text-base font-semibold">Endpoint {index + 1}</h4>
-            <Badge variant="outline" className="font-mono">
-              {providerId}/&lt;model&gt;
-            </Badge>
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary ring-1 ring-primary/20">
+              {index + 1}
+            </span>
+            <div className="min-w-0">
+              <h4 className="text-base font-semibold leading-tight">
+                Endpoint {index + 1}
+              </h4>
+              <p className="font-mono text-xs text-muted-foreground">
+                {providerId}/&lt;model&gt;
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={badgeVariant(status.status)}>{status.label}</Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant={statusClass(status.status)} className="gap-1.5">
+              <span className={cn("size-1.5 rounded-full", statusDotClass(status.status))} />
+              {status.label}
+            </Badge>
             <Button
               type="button"
               variant="ghost"
-              size="sm"
+              size="icon"
               disabled={locked}
+              aria-label={`Remove endpoint ${index + 1}`}
+              title="Remove endpoint"
               onClick={onRemove}
             >
-              Remove
+              <Trash2 />
             </Button>
           </div>
         </div>
@@ -174,12 +215,23 @@ function InstanceCard({
             onChange={(event) => onPatch({ proxy: event.target.value })}
           />
         </div>
-        {models.length > 0 ? (
-          <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium">
-                {models.length} model{models.length === 1 ? "" : "s"} from /models
+        <div className="flex flex-col gap-2 rounded-md border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <ListChecks className="size-4 text-muted-foreground" />
+                {models.length === 0
+                  ? "No model ids yet"
+                  : `${models.length} model id${models.length === 1 ? "" : "s"}`}
               </p>
+              {selected.length > 0 ? (
+                <Badge variant="outline" className="gap-1 px-1.5 py-0 text-[10px]">
+                  <Check className="size-3" />
+                  {selected.length} selected
+                </Badge>
+              ) : null}
+            </div>
+            {models.length > 0 ? (
               <Button
                 type="button"
                 variant="ghost"
@@ -187,34 +239,99 @@ function InstanceCard({
                 disabled={locked}
                 onClick={onClearModels}
               >
+                <Trash2 />
                 Clear
               </Button>
-            </div>
-            <div className="grid max-h-56 gap-1 overflow-auto">
-              {models.map((model) => (
-                <div
-                  key={model}
-                  className="flex items-center justify-between gap-2 rounded-md bg-card px-2.5 py-1.5"
-                >
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                    {model}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={locked}
-                    onClick={() => onUseModel(model)}
-                  >
-                    Use as default
-                  </Button>
-                </div>
-              ))}
-            </div>
+            ) : null}
           </div>
-        ) : null}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
+          <div className="flex gap-2">
+            <Input
+              id={`${providerId}-model-id`}
+              type="text"
+              autoComplete="off"
+              placeholder="Add model id, comma-separated (gpt-4o, deepseek-v3, …)"
+              value={modelDraft}
+              disabled={locked}
+              onChange={(event) => setModelDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault()
+                  addFromDraft()
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={locked || !modelDraft.trim()}
+              onClick={addFromDraft}
+            >
+              <ListPlus />
+              Add
+            </Button>
+          </div>
+          {models.length > 0 ? (
+            <div className="grid max-h-56 gap-1 overflow-auto">
+              {models.map((model) => {
+                const isDefault = `${providerId}/${model}` === currentDefault
+                return (
+                  <div
+                    key={model}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md border px-2.5 py-1.5 transition-colors hover:border-border",
+                      isDefault
+                        ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                        : "border-transparent bg-card",
+                    )}
+                  >
+                    <Checkbox
+                      id={`${providerId}-model-${model}`}
+                      checked={selected.includes(model)}
+                      disabled={locked}
+                      aria-label={`Apply model ${model}`}
+                      title={
+                        selected.includes(model)
+                          ? "Applied to this endpoint"
+                          : "Select to apply this model"
+                      }
+                      onCheckedChange={() => onToggleModel(model)}
+                    />
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                      {isDefault ? (
+                        <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-500" />
+                      ) : null}
+                      <span className="truncate font-mono text-xs">{model}</span>
+                      {isDefault ? (
+                        <Badge variant="ok" className="px-1.5 py-0 text-[10px]">
+                          default
+                        </Badge>
+                      ) : null}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={locked}
+                      onClick={() => onUseModel(model)}
+                    >
+                      <Star className="size-3.5" />
+                      Use as default
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Add model ids manually, or use <strong>Fetch models</strong> below
+              to pull them from GET {`{base}`}/models.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Cable className="size-3.5" />
             {status.baseUrl ? `Resolves to ${status.baseUrl}` : "Not checked yet"}
           </p>
           <div className="flex items-center gap-2">
@@ -226,6 +343,11 @@ function InstanceCard({
               onClick={onFetch}
               title="Fetch model ids from GET {base}/models (uses the saved config, Apply first)"
             >
+              {fetching ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <RefreshCw />
+              )}
               {fetching ? "Fetching…" : "Fetch models"}
             </Button>
             <Button
@@ -235,6 +357,7 @@ function InstanceCard({
               disabled={!canProbe || testing}
               onClick={onTest}
             >
+              {testing ? <Loader2 className="animate-spin" /> : <Cable />}
               {testing ? "Testing…" : "Test connection"}
             </Button>
           </div>
@@ -251,6 +374,7 @@ export function OpenAICompatibleView({
   localStatus,
   onTestProvider,
   onFetchModels,
+  onAddModels,
   onMessage,
 }: OpenAICompatibleViewProps) {
   const field = config.fields.find(
@@ -297,19 +421,52 @@ export function OpenAICompatibleView({
     try {
       const models = await onFetchModels(providerId)
       if (models.length === 0) {
-        setModelsByProvider((prev) => ({ ...prev, [providerId]: [] }))
+        onMessage(`No models found at ${providerId}.`, "warn")
         return
       }
-      setModelsByProvider((prev) => ({ ...prev, [providerId]: models }))
+      setModelsByProvider((prev) => ({
+        ...prev,
+        [providerId]: [...new Set([...(prev[providerId] ?? []), ...models])],
+      }))
       onMessage(`Fetched ${models.length} models from ${providerId}.`, "ok")
     } finally {
       setFetchingId(null)
     }
   }
 
+  const addModels = (index: number, models: string[]) => {
+    const providerId = providerIdFor(index)
+    setModelsByProvider((prev) => ({
+      ...prev,
+      [providerId]: [...new Set([...(prev[providerId] ?? []), ...models])],
+    }))
+    // Manually added ids are deliberately typed, so apply them immediately.
+    const current = instances[index]?.models ?? []
+    updateInstance(index, { models: [...new Set([...current, ...models])] })
+    onAddModels(providerId, models)
+    onMessage(
+      `Added ${models.length} model id${models.length === 1 ? "" : "s"} to ${providerId}. Apply to save.`,
+      "ok",
+    )
+  }
+
+  const toggleModel = (index: number, model: string) => {
+    const current = instances[index]?.models ?? []
+    updateInstance(
+      index,
+      current.includes(model)
+        ? { models: current.filter((candidate) => candidate !== model) }
+        : { models: [...current, model] },
+    )
+  }
+
   const useModelAsDefault = (index: number, model: string) => {
     const route = `${providerIdFor(index)}/${model}`
     onValuesChange({ ...values, MODEL: route })
+    const current = instances[index]?.models ?? []
+    if (!current.includes(model)) {
+      updateInstance(index, { models: [...current, model] })
+    }
     onMessage(`Default model set to ${route}. Apply to save.`, "ok")
   }
 
@@ -323,20 +480,45 @@ export function OpenAICompatibleView({
 
   const legacyBaseUrl = values["OPENAI_COMPATIBLE_BASE_URL"] ?? ""
   const legacyKey = values["OPENAI_COMPATIBLE_API_KEY"] ?? ""
+  const cardModels = (index: number): string[] => {
+    const providerId = providerIdFor(index)
+    return [
+      ...new Set([
+        ...(instances[index]?.models ?? []),
+        ...(modelsByProvider[providerId] ?? []),
+      ]),
+    ]
+  }
+  const totalModels = instances.reduce(
+    (sum, _instance, index) => sum + cardModels(index).length,
+    0,
+  )
 
   return (
     <section className="space-y-4">
       <div>
         <h3 className="text-lg font-semibold">Endpoints</h3>
-        <p className="text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Add any OpenAI-compatible server (vLLM, LM Studio, Ollama, Together, or
           your own gateway). Each endpoint becomes a numbered provider:{" "}
           <code>openai_compatible_1/&lt;model&gt;</code>,{" "}
-          <code>openai_compatible_2/&lt;model&gt;</code>, … Use{" "}
-          <strong>Fetch models</strong> to pull model ids from the endpoint's{" "}
-          <code>/models</code> route, then Apply to save. Fetched ids also appear
-          in the Model Config dropdowns.
+          <code>openai_compatible_2/&lt;model&gt;</code>, … Add as many model ids
+          as you want per endpoint, comma-separated, or use{" "}
+          <strong>Fetch models</strong> to pull them from the endpoint's{" "}
+          <code>/models</code> route. Tick the models you want applied — selected
+          ids are saved with the endpoint on <strong>Apply</strong> and appear in
+          the Model Config dropdowns after a reload.
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge variant="outline" className="gap-1.5">
+            <Server className="size-3.5 text-muted-foreground" />
+            {instances.length} endpoint{instances.length === 1 ? "" : "s"}
+          </Badge>
+          <Badge variant="outline" className="gap-1.5">
+            <ListChecks className="size-3.5 text-muted-foreground" />
+            {totalModels} model id{totalModels === 1 ? "" : "s"}
+          </Badge>
+        </div>
       </div>
 
       {instances.length === 0 && legacyBaseUrl.trim() ? (
@@ -354,6 +536,7 @@ export function OpenAICompatibleView({
               commit([{ base_url: legacyBaseUrl, api_keys: legacyKey, proxy: "" }])
             }
           >
+            <ListPlus />
             Import as endpoint 1
           </Button>
         </div>
@@ -361,11 +544,15 @@ export function OpenAICompatibleView({
 
       {instances.length === 0 ? (
         <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+            <span className="flex size-12 items-center justify-center rounded-full bg-primary/10">
+              <Server className="size-6 text-primary" />
+            </span>
             <p className="text-sm text-muted-foreground">
               No endpoints yet. Add your first OpenAI-compatible endpoint.
             </p>
             <Button type="button" onClick={addInstance}>
+              <Plus />
               Add endpoint
             </Button>
           </CardContent>
@@ -383,7 +570,9 @@ export function OpenAICompatibleView({
                 locked={field.locked}
                 testing={testingId === providerId}
                 fetching={fetchingId === providerId}
-                models={modelsByProvider[providerId] ?? []}
+                models={cardModels(index)}
+                selected={instance.models ?? []}
+                currentDefault={values["MODEL"] ?? ""}
                 onPatch={(patch) => updateInstance(index, patch)}
                 onRemove={() => removeInstance(index)}
                 onTest={() => {
@@ -391,18 +580,25 @@ export function OpenAICompatibleView({
                   onTestProvider(providerId, () => setTestingId(null))
                 }}
                 onFetch={() => void fetchModels(index)}
-                onClearModels={() =>
+                onClearModels={() => {
                   setModelsByProvider((prev) => ({ ...prev, [providerId]: [] }))
-                }
+                  updateInstance(index, { models: [] })
+                }}
+                onAddModels={(models) => addModels(index, models)}
+                onToggleModel={(model) => toggleModel(index, model)}
                 onUseModel={(model) => useModelAsDefault(index, model)}
               />
             )
           })}
-          <div>
-            <Button type="button" variant="secondary" onClick={addInstance}>
-              Add endpoint
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-dashed"
+            onClick={addInstance}
+          >
+            <Plus />
+            Add endpoint
+          </Button>
         </div>
       )}
     </section>

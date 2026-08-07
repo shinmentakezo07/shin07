@@ -113,4 +113,6 @@ export interface OpenAICompatibleInstance {
   base_url: string
   api_keys: string
   proxy: string
+  /** Model ids applied to this endpoint; persisted on Apply. */
+  models?: string[]
 }

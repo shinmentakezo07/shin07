@@ -16,7 +16,7 @@ from free_claude_code.application.model_metadata import (
 )
 from free_claude_code.config.admin.values import MASKED_SECRET
 from free_claude_code.config.server_urls import local_admin_url
-from free_claude_code.config.settings import Settings
+from free_claude_code.config.settings import OpenAICompatibleInstance, Settings
 from tests.api.support import create_test_app, provider_manager_for_app
 
 
@@ -365,6 +365,19 @@ def test_admin_static_model_combobox_preserves_custom_slugs_and_none_semantics()
     assert '"warn"' in app_source
 
 
+def test_admin_openai_compatible_view_supports_manual_model_entries():
+    view = Path("frontend/src/components/OpenAICompatibleView.tsx").read_text(
+        encoding="utf-8"
+    )
+    app_source = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
+    assert "Add model id, comma-separated" in view
+    assert 'split(",")' in view
+    assert "onAddModels" in view
+    assert "Use as default" in view
+    assert "handleAddEndpointModels" in app_source
+    assert "onAddModels={handleAddEndpointModels}" in app_source
+
+
 def test_admin_config_masks_secrets_and_exposes_manifest(monkeypatch, tmp_path):
     _set_home(monkeypatch, tmp_path)
     _clear_process_config(monkeypatch)
@@ -485,6 +498,35 @@ def test_admin_models_include_configured_and_cached_canonical_slugs():
             "nvidia_nim/configured-model",
             "open_router/anthropic/configured-opus",
             "open_router/meta/llama-3.3",
+        ],
+        "failed_providers": [],
+    }
+
+
+def test_admin_models_include_stored_openai_compatible_instance_models():
+    """Applied per-endpoint model ids are listed even without live discovery."""
+    settings = Settings()
+    settings.model = "nvidia_nim/configured-model"
+    settings.openai_compatible_instances = (
+        OpenAICompatibleInstance(
+            base_url="https://a.example/v1",
+            models=("gpt-4o", "deepseek-v3"),
+        ),
+        OpenAICompatibleInstance(base_url=""),
+        OpenAICompatibleInstance(
+            base_url="https://b.example",
+            models=(" local-model ", ""),
+        ),
+    )
+    app = create_test_app(settings)
+    response = _local_client(app).get("/admin/api/models")
+    assert response.status_code == 200
+    assert response.json() == {
+        "models": [
+            "nvidia_nim/configured-model",
+            "openai_compatible_1/deepseek-v3",
+            "openai_compatible_1/gpt-4o",
+            "openai_compatible_3/local-model",
         ],
         "failed_providers": [],
     }

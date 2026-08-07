@@ -1,7 +1,10 @@
 import { useState } from "react"
+import { Cable, Cpu, KeyRound, RefreshCw } from "lucide-react"
 
 import { statusClass } from "@/App"
+import { statusDotClass } from "@/lib/status"
 import type { ProviderStatus } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Card } from "./ui/card"
@@ -26,25 +29,44 @@ export function ProviderCard({ provider, state, onTest }: ProviderCardProps) {
     : provider.configuration || ""
 
   const label = isLocal ? "Test" : "Refresh models"
+  const Icon = isLocal ? Cpu : Cable
 
   return (
-    <Card className="flex flex-row items-center justify-between gap-3 p-4">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <strong className="text-sm">{provider.display_name || provider.provider_id}</strong>
-          <Badge variant={statusClass(state.status)}>{state.label}</Badge>
+    <Card className="flex flex-row items-center justify-between gap-3 p-4 transition-shadow hover:shadow-md">
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-lg",
+            isLocal ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+          )}
+        >
+          <Icon className="size-4.5" />
+        </span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <strong className="truncate text-sm">
+              {provider.display_name || provider.provider_id}
+            </strong>
+            <StatusBadge status={state.status} label={state.label} />
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{meta}</p>
         </div>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{meta}</p>
       </div>
       <Button
         variant="secondary"
         size="sm"
+        className="shrink-0"
         disabled={pending}
         onClick={() => {
           setPending(true)
           onTest(provider.provider_id, () => setPending(false))
         }}
       >
+        {pending ? (
+          <RefreshCw className="animate-spin" />
+        ) : (
+          <Icon className="size-4" />
+        )}
         {pending ? (isLocal ? "Testing" : "Refreshing") : label}
       </Button>
     </Card>
@@ -88,10 +110,26 @@ export function ConnectedAccountCard({
   const target = status.authorization_url || status.verification_url
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
-      <div className="flex items-center gap-2">
-        <strong className="text-sm">{provider.display_name || provider.provider_id}</strong>
-        <Badge variant={statusClass(status.state)}>{status.label}</Badge>
+    <Card className="flex flex-col gap-3 p-4 transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-3">
+        <span
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-lg",
+            connected
+              ? "bg-emerald-500/10 text-emerald-600"
+              : connecting
+                ? "bg-amber-500/10 text-amber-600"
+                : "bg-muted text-muted-foreground",
+          )}
+        >
+          <KeyRound className="size-4.5" />
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <strong className="truncate text-sm">
+            {provider.display_name || provider.provider_id}
+          </strong>
+          <StatusBadge status={status.state} label={status.label} />
+        </div>
       </div>
       <p className="text-xs text-muted-foreground">{statusMessage(status)}</p>
       <div className="flex flex-wrap gap-2">
@@ -132,6 +170,22 @@ export function ConnectedAccountCard({
         )}
       </div>
     </Card>
+  )
+}
+
+function StatusBadge({ status, label }: { status: string; label: string }) {
+  const connecting = status === "connecting"
+  return (
+    <Badge variant={statusClass(status)} className="gap-1.5">
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          statusDotClass(status),
+          connecting && "animate-pulse",
+        )}
+      />
+      {label}
+    </Badge>
   )
 }
 
