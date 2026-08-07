@@ -116,6 +116,20 @@ PROVIDER_CATALOG: dict[str, ProviderDescriptor] = {
             "azure_openai_base_url",
         ),
     ),
+    # Bring-your-own OpenAI-compatible Chat Completions endpoint. The customer
+    # owns the base URL; credentials accept a comma-separated key pool.
+    "openai_compatible": ProviderDescriptor(
+        provider_id="openai_compatible",
+        display_name="OpenAI-Compatible Endpoint",
+        credential_env="OPENAI_COMPATIBLE_API_KEY",
+        credential_attr="openai_compatible_api_key",
+        base_url_attr="openai_compatible_base_url",
+        proxy_attr="openai_compatible_proxy",
+        required_settings_attrs=(
+            "openai_compatible_api_key",
+            "openai_compatible_base_url",
+        ),
+    ),
     "open_router": ProviderDescriptor(
         provider_id="open_router",
         display_name="OpenRouter",

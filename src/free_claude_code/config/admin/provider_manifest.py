@@ -22,6 +22,18 @@ _PROVIDER_FIELD_OVERRIDES: dict[str, dict[str, Any]] = {
             "https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/."
         ),
     },
+    "OPENAI_COMPATIBLE_API_KEY": {
+        "description": (
+            "API key for your OpenAI-compatible endpoint. Accepts a comma-separated "
+            "key pool that is rotated round-robin with failover on transient errors."
+        ),
+    },
+    "OPENAI_COMPATIBLE_BASE_URL": {
+        "description": (
+            "Base URL of your OpenAI-compatible Chat Completions server, for example "
+            "https://my-gateway.example or https://my-gateway.example/v1."
+        ),
+    },
     "NVIDIA_NIM_API_KEY": {
         "label": "NVIDIA NIM API Key",
         "description": "Used by NVIDIA NIM chat and optional NIM voice transcription.",

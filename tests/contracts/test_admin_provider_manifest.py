@@ -192,3 +192,39 @@ def test_azure_openai_admin_status_distinguishes_key_and_url() -> None:
         )["status"]
         == "configured"
     )
+
+
+def test_openai_compatible_admin_status_distinguishes_key_and_url() -> None:
+    from free_claude_code.config.admin.status import provider_config_status
+
+    def compatible_status(api_key: str, base_url: str) -> dict[str, object]:
+        statuses = provider_config_status(
+            {
+                "OPENAI_COMPATIBLE_API_KEY": {"value": api_key},
+                "OPENAI_COMPATIBLE_BASE_URL": {"value": base_url},
+            }
+        )
+        return next(
+            status
+            for status in statuses
+            if status["provider_id"] == "openai_compatible"
+        )
+
+    missing_key = compatible_status("", "https://my-gateway.example/v1")
+    assert missing_key["status"] == "missing_key"
+    assert missing_key["label"] == "Missing key"
+
+    missing_url = compatible_status("gateway-key", "")
+    assert missing_url["status"] == "missing_config"
+    assert missing_url["label"] == "Missing configuration"
+    assert missing_url["configuration"] == (
+        "OPENAI_COMPATIBLE_API_KEY + OPENAI_COMPATIBLE_BASE_URL"
+    )
+
+    assert (
+        compatible_status(
+            "gateway-key",
+            "https://my-gateway.example/v1",
+        )["status"]
+        == "configured"
+    )

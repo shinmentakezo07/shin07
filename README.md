@@ -155,6 +155,7 @@ fcc-codex exec "hello"
 | [NVIDIA NIM](https://build.nvidia.com/settings/api-keys) | `NVIDIA_NIM_API_KEY` | `nvidia_nim/nvidia/nemotron-3-super-120b-a12b` |
 | [OpenAI / ChatGPT](https://learn.chatgpt.com/docs/auth) | Connect ChatGPT in the Admin UI | `openai/<model-id>` |
 | [Azure OpenAI](https://learn.microsoft.com/azure/foundry/openai/how-to/chatgpt) | `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_BASE_URL` | `azure_openai/<deployment-name>` |
+| [OpenAI-Compatible Endpoint](https://platform.openai.com/docs/api-reference) | `OPENAI_COMPATIBLE_API_KEY` and `OPENAI_COMPATIBLE_BASE_URL` | `openai_compatible/<model-id>` |
 | [OpenRouter](https://openrouter.ai/keys) | `OPENROUTER_API_KEY` | `open_router/openrouter/free` |
 | [Google AI Studio (Gemini)](https://aistudio.google.com/apikey) | `GEMINI_API_KEY` | `gemini/models/gemini-3.1-flash-lite` |
 | [Google Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/start/openai) | `VERTEX_PROJECT_ID` + ADC | `vertex/google/gemini-3.5-flash` |
@@ -197,6 +198,11 @@ fcc-codex exec "hello"
   `https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/`, and select a
   deployment that supports Chat Completions. Enter the deployment name as a
   custom model slug if it does not appear in the model dropdown.
+- The generic OpenAI-Compatible Endpoint lets you point at your own Chat
+  Completions server. Set `OPENAI_COMPATIBLE_BASE_URL` to the server root
+  (for example `https://my-gateway.example`) or its `/v1` base, and
+  `OPENAI_COMPATIBLE_API_KEY` to a single key or a comma-separated key pool
+  that is rotated round-robin with failover like every other provider.
 - Mistral Codestral uses a separate key from Mistral La Plateforme.
 - Kimi Code subscription keys use `kimi_code/`; Kimi API credit keys use
   `kimi/`. Kimi Code plans are for personal interactive coding-agent use under

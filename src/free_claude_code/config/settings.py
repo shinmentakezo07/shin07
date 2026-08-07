@@ -28,6 +28,15 @@ class Settings(BaseSettings):
         default="", validation_alias="AZURE_OPENAI_BASE_URL"
     )
 
+    # ==================== Generic OpenAI-Compatible Endpoint ====================
+    # Bring-your-own base URL; the key accepts a comma-separated pool.
+    openai_compatible_api_key: str = Field(
+        default="", validation_alias="OPENAI_COMPATIBLE_API_KEY"
+    )
+    openai_compatible_base_url: str = Field(
+        default="", validation_alias="OPENAI_COMPATIBLE_BASE_URL"
+    )
+
     # ==================== OpenRouter Config ====================
     open_router_api_key: str = Field(default="", validation_alias="OPENROUTER_API_KEY")
 
@@ -163,6 +172,9 @@ class Settings(BaseSettings):
     # ==================== Per-Provider Proxy ====================
     openai_proxy: str = Field(default="", validation_alias="OPENAI_PROXY")
     azure_openai_proxy: str = Field(default="", validation_alias="AZURE_OPENAI_PROXY")
+    openai_compatible_proxy: str = Field(
+        default="", validation_alias="OPENAI_COMPATIBLE_PROXY"
+    )
     nvidia_nim_proxy: str = Field(default="", validation_alias="NVIDIA_NIM_PROXY")
     open_router_proxy: str = Field(default="", validation_alias="OPENROUTER_PROXY")
     mistral_proxy: str = Field(default="", validation_alias="MISTRAL_PROXY")

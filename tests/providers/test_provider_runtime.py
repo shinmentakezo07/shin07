@@ -55,6 +55,8 @@ def _make_settings(**overrides):
     mock.model_haiku = None
     mock.azure_openai_api_key = "test_azure_openai_key"
     mock.azure_openai_base_url = "https://test-resource.openai.azure.com/openai/v1/"
+    mock.openai_compatible_api_key = "test_openai_compatible_key"
+    mock.openai_compatible_base_url = "https://my-gateway.example/v1"
     mock.nvidia_nim_api_key = "test_key"
     mock.open_router_api_key = "test_openrouter_key"
     mock.mistral_api_key = "test_mistral_key"
@@ -113,6 +115,7 @@ def _make_settings(**overrides):
     mock.kilo_proxy = ""
     mock.openai_proxy = ""
     mock.azure_openai_proxy = ""
+    mock.openai_compatible_proxy = ""
     mock.provider_rate_limit = 40
     mock.provider_rate_window = 60
     mock.provider_max_concurrency = 5
@@ -232,6 +235,63 @@ def test_azure_openai_provider_config_reports_missing_resource_url() -> None:
                 azure_openai_base_url="",
             ),
         )
+
+
+def test_openai_compatible_provider_config_uses_custom_base_key_and_proxy() -> None:
+    descriptor = PROVIDER_CATALOG["openai_compatible"]
+    settings = _make_settings(
+        openai_compatible_api_key="gateway-1, gateway-2",
+        openai_compatible_base_url="https://my-gateway.example/v1",
+        openai_compatible_proxy="http://proxy.test:8080",
+    )
+
+    config = build_provider_config(descriptor, settings)
+
+    assert descriptor.default_base_url is None
+    assert descriptor.configuration_attrs() == (
+        "openai_compatible_api_key",
+        "openai_compatible_base_url",
+    )
+    assert config.api_key == "gateway-1"
+    assert config.api_keys == ("gateway-1", "gateway-2")
+    assert config.base_url == "https://my-gateway.example/v1"
+    assert config.proxy == "http://proxy.test:8080"
+
+
+def test_openai_compatible_provider_config_reports_missing_base_url() -> None:
+    descriptor = PROVIDER_CATALOG["openai_compatible"]
+
+    with pytest.raises(
+        ApplicationUnavailableError,
+        match="OPENAI_COMPATIBLE_BASE_URL is not set",
+    ):
+        build_provider_config(
+            descriptor,
+            _make_settings(
+                openai_compatible_api_key="gateway-token",
+                openai_compatible_base_url="",
+            ),
+        )
+
+
+def test_create_openai_compatible_provider_normalizes_base_url_and_pools_keys() -> None:
+    settings = _make_settings(
+        openai_compatible_api_key="k1, k2",
+        openai_compatible_base_url="https://my-gateway.example",
+    )
+
+    with patch(
+        "free_claude_code.providers.openai_chat.provider.AsyncOpenAI"
+    ) as client_cls:
+        provider = create_provider("openai_compatible", settings)
+
+    assert isinstance(provider, OpenAIChatProvider)
+    # Server root is normalized to the /v1 OpenAI-compatible base.
+    assert provider._base_url == "https://my-gateway.example/v1"
+    assert provider._provider_name == "OPENAI_COMPATIBLE"
+    assert provider._pool is not None
+    assert provider._pool.size == 2
+    assert client_cls.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -472,6 +532,7 @@ def test_create_provider_instantiates_each_builtin():
         "nvidia_nim": NvidiaNimProvider,
         "openai": OpenAICodexProvider,
         "azure_openai": OpenAIChatProvider,
+        "openai_compatible": OpenAIChatProvider,
         "open_router": OpenRouterProvider,
         "mistral": MistralProvider,
         "mistral_codestral": OpenAIChatProvider,

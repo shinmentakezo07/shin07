@@ -152,6 +152,20 @@ OPENAI_CHAT_PROFILES: dict[str, OpenAIChatProfile] = {
         ),
         model_ids_are_routable=False,
     ),
+    # Generic bring-your-own OpenAI-compatible Chat Completions endpoint.
+    # Send no reasoning params (many self-hosted servers reject unknown fields);
+    # THINK_TAGS replay still surfaces /think delimiters models emit. Accepts a
+    # server root or an explicit /v1 base, and passes caller extra_body through.
+    "openai_compatible": OpenAIChatProfile(
+        _policy(
+            "OPENAI_COMPATIBLE",
+            ReasoningReplayMode.THINK_TAGS,
+            include_extra_body=True,
+            extra_body_validator=validate_extra_body_does_not_override_canonical_fields,
+        ),
+        NO_REASONING,
+        normalize_base_url=True,
+    ),
     "mistral_codestral": OpenAIChatProfile(
         _policy("CODESTRAL", ReasoningReplayMode.THINK_TAGS),
         NO_REASONING,
