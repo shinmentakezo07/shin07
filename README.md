@@ -103,6 +103,47 @@ Use the port shown in your terminal if it differs from `8082`.
   <img src="assets/admin-page.png" alt="Free Claude Code Admin UI" width="700">
 </div>
 
+## Run with Docker
+
+A `Dockerfile` + `docker-compose.yml` build the Admin UI from source and run
+the server on Linux (requires Docker with BuildKit, default since 23.0).
+
+**The frontend is always rebuilt fresh** on every deploy: the committed
+`admin_static` assets are excluded from the build context and the image always
+compiles the UI from the current `frontend/` sources, so a rebuild can never
+serve a stale Admin UI.
+
+```bash
+# One-time setup (creates the managed env file the server reads and writes)
+cp .env.example .env
+
+# Build + start (rebuilds the image; frontend stage reruns whenever
+# frontend/ sources changed)
+docker compose up -d --build
+
+# Guaranteed full rebuild of everything, UI included
+docker compose up -d --build --no-cache
+
+# Redeploy after code changes
+docker compose up -d --build
+
+# Stop / logs
+docker compose down
+docker compose logs -f
+```
+
+Details:
+
+- **Admin UI**: http://127.0.0.1:8082/admin — the Admin UI is local-only by
+  design, so the container uses host networking instead of port publishing
+  (publishing NATs requests and the server rejects the bridge IP with 403).
+- **Config**: the container reads and writes `./.env` (same file as a native
+  install, Admin UI **Apply** included). It is never baked into the image.
+- **Clients**: point coding agents at `http://<host>:8082` (the proxy itself is
+  not loopback-gated).
+- On macOS/Windows Docker Desktop, use an SSH tunnel to the host instead of
+  host networking.
+
 ### 4. Run Your Coding Agent
 
 Claude Code:

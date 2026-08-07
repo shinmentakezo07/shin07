@@ -1,0 +1,28 @@
+services:
+  fcc:
+    build:
+      context: .
+    image: free-claude-code:latest
+    container_name: fcc-server
+    # The Admin UI is local-only by design (loopback gate). Publishing the
+    # port NATs requests so the server sees a bridge IP and returns 403 for
+    # /admin. Host networking keeps 127.0.0.1 access exactly like a native
+    # install: Admin UI at http://127.0.0.1:8082/admin, proxy on all
+    # interfaces at :8082 for coding agents. (Linux; on macOS/Windows Docker
+    # Desktop use an SSH tunnel to the host instead.)
+    network_mode: host
+    environment:
+      - FCC_OPEN_BROWSER=false
+    volumes:
+      # Managed env file: the server reads it at startup and the Admin UI
+      # "Apply" writes it. Persists across re-runs; never baked into the
+      # image. Create it before the first deploy:
+      #   cp .env.example .env
+      - ./.env:/app/.env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/admin', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

@@ -1,0 +1,40 @@
+# VCS / editor
+.git
+.gitignore
+*.md~
+.idea
+.vscode
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.ruff_cache
+dist
+build
+
+# Frontend tooling (never copied; the image rebuilds the UI from source)
+frontend/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+
+# Fresh UI bundle: the Dockerfile overlays the built admin_static from the
+# frontend stage, so the committed assets are excluded from the context to
+# guarantee the image never ships a stale UI.
+src/free_claude_code/api/admin_static
+
+# Secrets / local state
+.env
+.env.local
+.env.*.local
+
+# Tests and tooling not needed in the image
+tests
+smoke
+scripts
+assets
+.factory
+*.log
