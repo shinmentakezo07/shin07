@@ -30,6 +30,7 @@ from free_claude_code.core.anthropic.streaming import (
     parse_complete_tool_input,
     tool_schemas_by_name,
 )
+from free_claude_code.core.diagnostics import safe_exception_message
 from free_claude_code.core.failures import ExecutionFailure
 from free_claude_code.core.reasoning import DEFAULT_REASONING_POLICY, ReasoningPolicy
 from free_claude_code.core.trace import provider_chat_body_snapshot, trace_event
@@ -169,12 +170,14 @@ class OpenAIChatProvider(BaseProvider):
         """Return the next async client in round-robin order (failover target).
 
         A single-key provider always returns the same client. With a multi-key
-        pool, each call advances the rotation so consecutive requests and retried
-        attempts land on distinct keys.
+        pool, each call returns the current key until its per-key quota of
+        acquires elapses, then rotates to the next key. Transient upstream
+        errors call :meth:`ApiKeyPool.mark_failure` to bypass the quota and
+        jump to the next key.
         """
         if self._pool is None:
             return self._client
-        index = await self._pool.advance()
+        index = await self._pool.acquire()
         return self._clients[index]
 
     async def cleanup(self) -> None:
@@ -300,6 +303,17 @@ class OpenAIChatProvider(BaseProvider):
             except asyncio.CancelledError:
                 raise
             except Exception as error:
+                if self._pool is not None:
+                    rotated = await self._pool.mark_failure(error)
+                    if rotated is not None:
+                        logger.warning(
+                            "{}_STREAM: rotating from key[{}] to key[{}] after {} ({})",
+                            self._provider_name,
+                            rotated[0],
+                            rotated[1],
+                            error.__class__.__name__,
+                            safe_exception_message(error),
+                        )
                 retry_body = self._next_create_retry_body(error, body, used_retry_kinds)
                 if retry_body is not None and retry_session.can_attempt:
                     await attempt.retry_immediately()

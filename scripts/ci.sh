@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-CHECK_ORDER="suppressions ruff-format ruff-check ty pytest"
+CHECK_ORDER="suppressions ruff-format ruff-check ty frontend pytest"
 
 dry_run=0
 only_checks=""
@@ -20,6 +20,7 @@ Checks (in order):
   ruff-format    uv run ruff format
   ruff-check     uv run ruff check --fix
   ty             uv run ty check
+  frontend       Build the admin UI and verify committed assets are current
   pytest         uv run pytest -v --tb=short
 
 Options:
@@ -69,7 +70,7 @@ run() {
 
 valid_check_id() {
     case "$1" in
-        suppressions | ruff-format | ruff-check | ty | pytest) return 0 ;;
+        suppressions | ruff-format | ruff-check | ty | frontend | pytest) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -151,6 +152,17 @@ run_ty() {
     run uv run ty check
 }
 
+run_frontend() {
+    step "frontend (admin UI build)"
+    if ! command -v npm >/dev/null 2>&1; then
+        fail "npm is required for the frontend check but was not found on PATH."
+    fi
+    run npm --prefix frontend ci
+    run npm --prefix frontend run build
+    step "frontend (verify committed admin assets are current)"
+    run git diff --exit-code -- src/free_claude_code/api/admin_static/
+}
+
 run_pytest() {
     step "pytest"
     run uv run pytest -v --tb=short
@@ -162,6 +174,7 @@ run_check() {
         ruff-format) run_ruff_format ;;
         ruff-check) run_ruff_check ;;
         ty) run_ty ;;
+        frontend) run_frontend ;;
         pytest) run_pytest ;;
         *) fail "unknown check id: $1" ;;
     esac

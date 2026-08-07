@@ -14,4 +14,7 @@ debug-*.log
 .coverage
 llama_cache
 .smoke-results
-.vscode
+.vscodefrontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+frontend/public/

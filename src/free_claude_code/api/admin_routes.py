@@ -14,9 +14,10 @@ from free_claude_code.application.connected_accounts import (
     ConnectedAccountLoginMode,
 )
 from free_claude_code.application.model_metadata import ProviderModelRefreshResult
+from free_claude_code.config.admin.keys import split_key_pool
 from free_claude_code.config.admin.manifest import FIELD_BY_KEY
 from free_claude_code.config.admin.persistence import validate_updates
-from free_claude_code.config.admin.values import load_config_response
+from free_claude_code.config.admin.values import load_config_response, load_value_state
 from free_claude_code.config.model_refs import configured_chat_model_refs
 from free_claude_code.config.provider_catalog import (
     PROVIDER_CATALOG,
@@ -83,7 +84,7 @@ def _asset_response(filename: str) -> FileResponse:
     path = STATIC_DIR / filename
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Admin asset not found")
-    return FileResponse(path)
+    return FileResponse(path, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/admin", include_in_schema=False)
@@ -95,9 +96,9 @@ async def admin_page(request: Request):
 @router.get("/admin/assets/{filename}", include_in_schema=False)
 async def admin_asset(filename: str, request: Request):
     require_loopback_admin(request)
-    if filename not in {"admin.css", "admin.js"}:
+    if not filename or filename.startswith("/") or ".." in filename:
         raise HTTPException(status_code=404, detail="Admin asset not found")
-    return _asset_response(filename)
+    return _asset_response(f"assets/{filename}")
 
 
 @router.get("/admin/api/config")
@@ -213,6 +214,19 @@ async def disconnect_connected_account(
     _require_connected_account_provider(provider_id)
     status = await services.admin.disconnect_connected_account(provider_id)
     return _no_store(status.as_dict())
+
+
+@router.get("/admin/api/pools/{field_key}")
+async def pool_keys(field_key: str, request: Request):
+    require_loopback_admin(request)
+    field = FIELD_BY_KEY.get(field_key)
+    if field is None or not field.pool_supported:
+        raise HTTPException(
+            status_code=404,
+            detail="Field does not support a key pool.",
+        )
+    raw_value = str(load_value_state().get(field_key, {}).get("value", ""))
+    return _no_store({"key": field_key, "keys": list(split_key_pool(raw_value))})
 
 
 @router.get("/admin/api/models")

@@ -141,25 +141,24 @@ def test_admin_cache_policy_does_not_match_similar_public_paths(monkeypatch, tmp
 
 
 def test_admin_api_fetches_bypass_browser_cache():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
-        encoding="utf-8"
-    )
+    script = Path("frontend/src/lib/api.ts").read_text(encoding="utf-8")
 
     assert 'cache: "no-store"' in script
 
 
 def test_admin_connected_account_login_preopens_sign_in_window():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+    app_source = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
+    cards = Path("frontend/src/components/ProviderCards.tsx").read_text(
         encoding="utf-8"
     )
 
-    assert 'window.open("about:blank", "_blank")' in script
-    assert "popup.location.replace(target)" in script
-    assert "if (popup) popup.close()" in script
-    assert '"Reconnect"' in script
-    assert '"Copy code"' in script
-    assert "Restart your agent to refresh its model picker." in script
-    assert 'window.confirm("Disconnect this ChatGPT account from FCC?")' in script
+    assert 'window.open("about:blank", "_blank")' in app_source
+    assert "popup.location.replace(target)" in app_source
+    assert "if (popup) popup.close()" in app_source
+    assert "Reconnect" in cards
+    assert "Copy code" in cards
+    assert "Restart your agent to refresh its model picker." in cards
+    assert 'window.confirm("Disconnect this ChatGPT account from FCC?")' in app_source
 
 
 class _FakeConnectedAccount:
@@ -256,12 +255,13 @@ def test_admin_rejects_auth_routes_for_non_connected_provider(monkeypatch, tmp_p
 
 
 def test_admin_provider_cards_support_non_key_configuration():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+    script = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
+    cards = Path("frontend/src/components/ProviderCards.tsx").read_text(
         encoding="utf-8"
     )
 
     assert '"missing_config"' in script
-    assert ": provider.configuration;" in script
+    assert "provider.configuration" in cards
 
 
 def test_admin_page_no_longer_renders_generated_env_panel(monkeypatch, tmp_path):
@@ -288,76 +288,76 @@ def test_admin_page_no_longer_renders_global_status_header(monkeypatch, tmp_path
 
 
 def test_admin_static_no_longer_fetches_global_status_header():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
-        encoding="utf-8"
-    )
+    api_source = Path("frontend/src/lib/api.ts").read_text(encoding="utf-8")
+    app_source = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
 
-    assert 'api("/admin/api/status")' not in script
-    assert "updateHeader" not in script
-    assert '"Running"' not in script
-    assert "serverStatus" not in script
-    assert "modelBadge" not in script
+    assert 'api("/admin/api/status")' not in api_source + app_source
+    assert "updateHeader" not in api_source + app_source
+    assert '"Running"' not in api_source + app_source
+    assert "serverStatus" not in api_source + app_source
+    assert "modelBadge" not in api_source + app_source
 
 
 def test_admin_static_drops_managed_source_label():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+    source = Path("frontend/src/components/FieldControl.tsx").read_text(
         encoding="utf-8"
     )
 
-    assert "managed_env" not in script
-    assert "hasOwnProperty.call(labels, source)" in script
-    assert 'parts.push("locked")' in script
-    assert "sourceEl.textContent = source" in script
+    assert "managed_env" not in source
+    assert "hasOwnProperty.call(labels," in source
+    assert 'parts.push("locked")' in source
+    assert "labels[field.source]" in source
 
 
 def test_admin_static_places_reasoning_fields_in_model_config():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
-        encoding="utf-8"
-    )
+    script = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
 
     assert 'sections: ["models", "reasoning", "web_tools"]' in script
     assert 'sections: ["models", "thinking", "web_tools"]' not in script
 
 
 def test_admin_static_model_combobox_owns_dropdown_and_search_behavior():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+    script = Path("frontend/src/components/ModelCombobox.tsx").read_text(
         encoding="utf-8"
     )
-    styles = Path("src/free_claude_code/api/admin_static/admin.css").read_text(
+    control = Path("frontend/src/components/FieldControl.tsx").read_text(
         encoding="utf-8"
     )
 
-    assert 'api("/admin/api/models" + (refresh ? "/refresh" : "")' in script
-    assert 'field.type === "model" || field.type === "optional_model"' in script
-    assert 'input.setAttribute("role", "combobox")' in script
-    assert 'listbox.setAttribute("role", "listbox")' in script
-    assert 'toggle.className = "model-combobox-toggle"' in script
-    assert "class ModelCombobox" in script
-    assert 'input.addEventListener("click", () => this.open())' in script
-    assert "value.toLocaleLowerCase().includes(normalizedQuery)" in script
-    assert 'event.key === "ArrowDown" || event.key === "ArrowUp"' in script
-    assert "this.setActive(this.visibleOptions.length - 1)" in script
-    assert 'event.key === "Enter"' in script
-    assert 'event.key === "Escape"' in script
-    assert 'document.createElement("datalist")' not in script
-    assert ".model-combobox-list" in styles
-    assert ".model-combobox-option.active" in styles
-    assert styles.count("background-image: var(--dropdown-chevron)") == 2
+    assert "fetchModelOptions(true)" in Path("frontend/src/App.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert 'case "model":' in control
+    assert 'case "optional_model":' in control
+    assert 'role="combobox"' in script
+    assert 'role="listbox"' in script
+    assert "aria-haspopup" in script
+    assert "ArrowDown" in script
+    assert "ArrowUp" in script
+    assert "event.key === " in script
+    assert "Enter" in script
+    assert "Escape" in script
+    assert "datalist" not in script
+    assert "visible = useMemo" in script
 
 
 def test_admin_static_model_combobox_preserves_custom_slugs_and_none_semantics():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
+    script = Path("frontend/src/components/ModelCombobox.tsx").read_text(
+        encoding="utf-8"
+    )
+    app_source = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
+    control = Path("frontend/src/components/FieldControl.tsx").read_text(
         encoding="utf-8"
     )
 
-    assert '? ["None", ...state.modelOptions]' in script
+    assert '["None", ...models]' in script
     assert "You can still enter a custom slug." in script
-    assert 'input.dataset.fieldType === "optional_model"' in script
-    assert 'return "";' in script
-    assert "await hydrateModelOptions();" in script
-    assert "Model fields remain editable" in script
-    assert "result.failed_providers || []" in script
-    assert '"warn"' in script
+    assert 'case "optional_model":' in control
+    assert 'fieldType === "optional_model"' in script
+    assert "hydrateModelOptions" in app_source
+    assert "Model fields remain editable" in app_source
+    assert "failed_providers" in app_source
+    assert '"warn"' in app_source
 
 
 def test_admin_config_masks_secrets_and_exposes_manifest(monkeypatch, tmp_path):
@@ -1240,6 +1240,75 @@ def test_admin_credential_fields_expose_key_pool_metadata(monkeypatch, tmp_path)
     assert non_credential["pool_supported"] is False
 
 
+def test_admin_pool_reveal_returns_stored_keys(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        'OPENROUTER_API_KEY="sk-a, sk-b, sk-c"\n',
+        encoding="utf-8",
+    )
+    app = create_test_app()
+
+    response = _local_client(app).get("/admin/api/pools/OPENROUTER_API_KEY")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "key": "OPENROUTER_API_KEY",
+        "keys": ["sk-a", "sk-b", "sk-c"],
+    }
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_admin_pool_reveal_rejects_non_pool_and_unknown_fields(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    app = create_test_app()
+
+    for field_key in ("TELEGRAM_PROXY_URL", "NOT_A_FIELD"):
+        response = _local_client(app).get(f"/admin/api/pools/{field_key}")
+
+        assert response.status_code == 404
+        assert response.headers["cache-control"] == "no-store"
+
+
+def test_admin_pool_reveal_is_loopback_only(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    app = create_test_app()
+
+    response = TestClient(app, client=("203.0.113.10", 50000)).get(
+        "/admin/api/pools/OPENROUTER_API_KEY"
+    )
+
+    assert response.status_code == 403
+
+
+def test_admin_apply_edits_pool_key_in_place(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    _clear_process_config(monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        'OPENROUTER_API_KEY="a, b, c"\n',
+        encoding="utf-8",
+    )
+    app = create_test_app()
+
+    # The pool editor reveals key 0, edits it in place, and keeps the others.
+    response = _local_client(app).post(
+        "/admin/api/config/apply",
+        json={"values": {"OPENROUTER_API_KEY": "edited-a,__fcc_key_1__,__fcc_key_2__"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["applied"] is True
+    text = (tmp_path / ".env").read_text("utf-8")
+    assert "OPENROUTER_API_KEY=edited-a,b,c" in text
+    assert "__fcc_key_" not in text
+
+
 def test_admin_apply_persists_initial_key_pool(monkeypatch, tmp_path):
     _set_home(monkeypatch, tmp_path)
     _clear_process_config(monkeypatch)
@@ -1305,37 +1374,38 @@ def test_admin_apply_keeps_pool_unchanged_when_single_mask_submitted(
 
 
 def test_admin_key_pool_editor_present_in_admin_script():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
-        encoding="utf-8"
-    )
-    styles = Path("src/free_claude_code/api/admin_static/admin.css").read_text(
+    script = Path("frontend/src/components/PoolEditor.tsx").read_text(encoding="utf-8")
+    control = Path("frontend/src/components/FieldControl.tsx").read_text(
         encoding="utf-8"
     )
 
-    assert "renderPoolField" in script
-    assert "field.pool_supported" in script
-    assert 'input.dataset.pool = "true"' in script
-    assert '"Remove"' in script
+    assert "PoolEditor" in script
+    assert "field.pool_supported" in control
+    assert "Remove" in script
     assert '"Add API key"' in script
-    assert '"Add"' in script
-    assert "pool-editor" in styles
-    assert "pool-item" in styles
-    assert "pool-add" in styles
+    assert "Add" in script
+    assert "PoolEditor" in control
     # The hidden pool input must be attached to the editor so changedValues()
     # can submit tokens/raw keys; without it the UI silently drops edits.
-    assert "container.append(list, addRow, input)" in script
-    assert "dataset.pool" in script
-    assert "dataset.original" in script
+    assert "item.token || item.raw" in script
+    assert "items" in script
+    assert "onChange" in script
+    # Stored keys can be revealed and edited inline from the pool editor.
+    assert "fetchPoolKeys" in script
+    assert "Show API key" in script
+    assert "Hide API key" in script
+    assert "fieldKey" in script
+    assert "/admin/api/pools/" in Path("frontend/src/lib/api.ts").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_admin_key_pool_editor_guards_locked_fields_and_reserved_values():
-    script = Path("src/free_claude_code/api/admin_static/admin.js").read_text(
-        encoding="utf-8"
-    )
+    script = Path("frontend/src/components/PoolEditor.tsx").read_text(encoding="utf-8")
 
     # Locked (process/env-file) pools: adding is already disabled; removing must
     # be too so edits are not silently dropped on apply.
-    assert "remove.disabled = field.locked" in script
+    assert "disabled={locked || disabled}" in script
     # Keys containing commas would be split into multiple pool entries on save.
     assert '"API keys cannot contain commas."' in script
     # The __fcc_key_N__ token pattern is reserved for UI masking tokens.
