@@ -7,6 +7,7 @@ from loguru import logger
 from free_claude_code.application.errors import UnknownProviderError
 from free_claude_code.config.model_refs import parse_model_name, parse_provider_type
 from free_claude_code.config.provider_catalog import (
+    OPENAI_COMPATIBLE_INSTANCE_RE,
     PROVIDER_CATALOG,
     SUPPORTED_PROVIDER_IDS,
 )
@@ -98,10 +99,16 @@ class ModelRouter:
             reasoning_preference=reasoning_preference,
         )
 
-    @staticmethod
-    def _validate_provider_id(provider_id: str) -> None:
-        if provider_id not in PROVIDER_CATALOG:
-            raise UnknownProviderError.for_provider(provider_id, PROVIDER_CATALOG)
+    def _validate_provider_id(self, provider_id: str) -> None:
+        if provider_id in PROVIDER_CATALOG:
+            return
+        # Numbered OpenAI-compatible endpoint instances are dynamic (configured
+        # via settings.openai_compatible_instances), so they are not catalog
+        # entries. Whether the specific number exists is validated by the
+        # provider factory, which reports the configured instance ids.
+        if OPENAI_COMPATIBLE_INSTANCE_RE.fullmatch(provider_id):
+            return
+        raise UnknownProviderError.for_provider(provider_id, PROVIDER_CATALOG)
 
     def _direct_provider_model(
         self, model_name: str

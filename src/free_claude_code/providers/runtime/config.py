@@ -1,13 +1,12 @@
 """Provider configuration construction from neutral catalog metadata."""
 
-import re
-
 from free_claude_code.application.errors import ApplicationUnavailableError
-from free_claude_code.config.provider_catalog import ProviderDescriptor
+from free_claude_code.config.provider_catalog import (
+    OPENAI_COMPATIBLE_INSTANCE_RE,
+    ProviderDescriptor,
+)
 from free_claude_code.config.settings import OpenAICompatibleInstance, Settings
 from free_claude_code.providers.base import ProviderConfig
-
-_OPENAI_COMPATIBLE_INSTANCE_RE = re.compile(r"openai_compatible_(\d+)")
 
 
 def string_setting(settings: Settings, attr_name: str | None, default: str = "") -> str:
@@ -122,7 +121,7 @@ def resolve_openai_compatible_instance(
         if instances and instances[0].base_url.strip():
             return instances[0], None
         return None, None
-    match = _OPENAI_COMPATIBLE_INSTANCE_RE.fullmatch(provider_id)
+    match = OPENAI_COMPATIBLE_INSTANCE_RE.fullmatch(provider_id)
     if match is None:
         return None, None
     index = int(match.group(1)) - 1

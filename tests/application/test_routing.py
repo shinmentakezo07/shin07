@@ -284,3 +284,25 @@ def test_model_router_preserves_typed_error_for_unknown_mapped_provider(settings
     assert str(exc_info.value) == (
         f"Unknown provider_type: 'unknown'. Supported: '{supported}'"
     )
+
+
+def test_model_router_routes_numbered_openai_compatible_instance(settings):
+    settings.model = "openai_compatible_1/GPT 5.6 Luna"
+
+    resolved = ModelRouter(settings).resolve("claude-2.1")
+
+    assert resolved.provider_id == "openai_compatible_1"
+    assert resolved.provider_model == "GPT 5.6 Luna"
+    assert resolved.provider_model_ref == "openai_compatible_1/GPT 5.6 Luna"
+
+
+def test_model_router_defers_instance_existence_to_provider_factory(settings):
+    # Numbered instance ids are dynamic (settings.openai_compatible_instances),
+    # so route validation accepts the numbering scheme and the provider
+    # factory reports which instance numbers are actually configured.
+    settings.model = "openai_compatible_999/some-model"
+
+    resolved = ModelRouter(settings).resolve("claude-2.1")
+
+    assert resolved.provider_id == "openai_compatible_999"
+    assert resolved.provider_model == "some-model"

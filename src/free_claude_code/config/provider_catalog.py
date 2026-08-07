@@ -4,6 +4,7 @@ Adapter factories live in :mod:`providers.runtime.factory`; this module stays fr
 provider implementation imports (see contract tests).
 """
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -399,3 +400,10 @@ SUPPORTED_PROVIDER_IDS: tuple[str, ...] = tuple(PROVIDER_CATALOG.keys())
 
 if len(set(SUPPORTED_PROVIDER_IDS)) != len(SUPPORTED_PROVIDER_IDS):
     raise AssertionError("Duplicate provider ids in PROVIDER_CATALOG key order")
+
+# Numbered OpenAI-compatible endpoint instances (``openai_compatible_1``, ...).
+# These ids are dynamic: they exist only while the matching entry in
+# ``settings.openai_compatible_instances`` is configured, so they are not
+# static catalog entries. Routing and provider factories share this pattern;
+# instance existence is validated when the provider is created.
+OPENAI_COMPATIBLE_INSTANCE_RE = re.compile(r"openai_compatible_(\d+)")
