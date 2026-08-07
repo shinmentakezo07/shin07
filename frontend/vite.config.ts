@@ -29,10 +29,13 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output: {
-        entryFileNames: "assets/admin.js",
+        // Content-hashed filenames: every build emits new URLs so stale
+        // browser/proxy caches can never serve an outdated admin UI, even if
+        // a cache layer ignores Cache-Control.
+        entryFileNames: "assets/admin-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",
         assetFileNames: (info) => {
-          if (info.name?.endsWith(".css")) return "assets/admin.css"
+          if (info.name?.endsWith(".css")) return "assets/admin-[hash].css"
           return "assets/[name]-[hash][extname]"
         },
       },

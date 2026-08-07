@@ -23,6 +23,7 @@ from free_claude_code.config.provider_catalog import (
     PROVIDER_CATALOG,
     ProviderAuthKind,
 )
+from free_claude_code.core.version import package_version
 
 from .dependencies import get_services
 from .ports import ApiServices
@@ -104,7 +105,7 @@ async def admin_asset(filename: str, request: Request):
 @router.get("/admin/api/config")
 async def get_admin_config(request: Request):
     require_loopback_admin(request)
-    return load_config_response()
+    return {**load_config_response(), "version": package_version()}
 
 
 @router.post("/admin/api/config/validate")

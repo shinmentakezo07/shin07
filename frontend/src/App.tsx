@@ -519,6 +519,11 @@ export default function App() {
           <h2 className="text-2xl font-semibold">
             {VIEW_GROUPS.find((view) => view.id === activeView)?.title ?? "Providers"}
           </h2>
+          {config.version ? (
+            <span className="rounded-full border border-input px-2.5 py-0.5 text-xs text-muted-foreground">
+              v{config.version}
+            </span>
+          ) : null}
         </header>
 
         <div className="flex-1 space-y-8 p-6">

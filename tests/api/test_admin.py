@@ -60,14 +60,18 @@ def test_admin_page_is_loopback_only(monkeypatch, tmp_path):
     assert remote_client.get("/admin").status_code == 403
 
 
+def _admin_asset_urls() -> tuple[str, ...]:
+    """Every built admin asset URL, so cache policy covers hashed bundles."""
+
+    static_assets = Path("src/free_claude_code/api/admin_static/assets")
+    return tuple(
+        f"/admin/assets/{path.name}" for path in sorted(static_assets.glob("*"))
+    )
+
+
 @pytest.mark.parametrize(
     "path",
-    (
-        "/admin",
-        "/admin/assets/admin.css",
-        "/admin/assets/admin.js",
-        "/admin/api/config",
-    ),
+    ("/admin", "/admin/api/config", *_admin_asset_urls()),
 )
 def test_admin_responses_are_never_cached(monkeypatch, tmp_path, path):
     _set_home(monkeypatch, tmp_path)
@@ -370,6 +374,7 @@ def test_admin_config_masks_secrets_and_exposes_manifest(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     body = response.json()
+    assert isinstance(body["version"], str) and body["version"]
     keys = {field["key"] for field in body["fields"]}
     assert "MODEL_FABLE" in keys
     assert "REASONING_FABLE" in keys

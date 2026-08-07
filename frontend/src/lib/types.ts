@@ -51,6 +51,7 @@ export interface AdminConfig {
   fields: AdminField[]
   paths: AdminPathInfo
   provider_status: ProviderStatus[]
+  version: string
 }
 
 export interface ValidationResult {
