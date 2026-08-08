@@ -3,7 +3,14 @@ import type { EChartsCoreOption } from "echarts/core"
 
 import {
   HEATMAP_DAYS,
+  HEATMAP_EMPTY_DARK,
+  HEATMAP_EMPTY_LIGHT,
   HEATMAP_HOURS,
+  HEATMAP_LABEL_ON_LIGHT,
+  HEATMAP_LEVEL_COLORS_DARK,
+  HEATMAP_LEVEL_COLORS_LIGHT,
+  HEATMAP_PEAK_RING_DARK,
+  HEATMAP_PEAK_RING_LIGHT,
   buildHourHeatmap,
   formatDuration,
   formatTokens,
@@ -21,11 +28,6 @@ const METRICS: { key: Metric; label: string }[] = [
   { key: "requests", label: "Requests" },
   { key: "tokens", label: "Tokens" },
 ]
-
-// GitHub contribution-graph green levels, light -> dark (empty cell excluded).
-const LEVEL_COLORS = ["#9be9a8", "#40c463", "#30a14e", "#216e39"]
-// Dark-green text reads on the two lightest levels; white on the dark ones.
-const DARK_LABEL_COLOR = "#216e39"
 
 function valueOf(cell: HeatmapCell, metric: Metric): number {
   return metric === "tokens" ? cell.tokens : cell.count
@@ -63,7 +65,8 @@ export function HourHeatmap({ records }: { records: UsageRecord[] }) {
   const [metric, setMetric] = useState<Metric>("requests")
   const cells = useMemo(() => buildHourHeatmap(records), [records])
   const palette = resolveChartTheme(dark)
-  const emptyColor = isDark ? "rgba(255, 255, 255, 0.06)" : "#ebedf0"
+  const levels = isDark ? HEATMAP_LEVEL_COLORS_DARK : HEATMAP_LEVEL_COLORS_LIGHT
+  const emptyColor = isDark ? HEATMAP_EMPTY_DARK : HEATMAP_EMPTY_LIGHT
 
   const summary = useMemo(() => {
     const dayCounts = Array.from({ length: 7 }, () => 0)
@@ -108,12 +111,12 @@ export function HourHeatmap({ records }: { records: UsageRecord[] }) {
     const q3 = Math.max(1, Math.ceil((maxValue * 3) / 4))
     const levelColor = (value: number): string => {
       if (value <= 0) return emptyColor
-      if (value <= q1) return LEVEL_COLORS[0]
-      if (value <= q2) return LEVEL_COLORS[1]
-      if (value <= q3) return LEVEL_COLORS[2]
-      return LEVEL_COLORS[3]
+      if (value <= q1) return levels[0]
+      if (value <= q2) return levels[1]
+      if (value <= q3) return levels[2]
+      return levels[3]
     }
-    const peakRing = isDark ? "#3fb950" : "#1a7f37"
+    const peakRing = isDark ? HEATMAP_PEAK_RING_DARK : HEATMAP_PEAK_RING_LIGHT
     const splitColor = isDark
       ? ["rgba(255, 255, 255, 0.02)", "rgba(255, 255, 255, 0.05)"]
       : ["rgba(0, 0, 0, 0.02)", "rgba(0, 0, 0, 0.045)"]
@@ -130,7 +133,13 @@ export function HourHeatmap({ records }: { records: UsageRecord[] }) {
           : {}),
         label:
           value > 0
-            ? { color: value > q2 ? "#ffffff" : DARK_LABEL_COLOR }
+            ? {
+                color: isDark
+                  ? "#ffffff"
+                  : value > q2
+                    ? "#ffffff"
+                    : HEATMAP_LABEL_ON_LIGHT,
+              }
             : { show: false },
       }
     })
@@ -207,10 +216,10 @@ export function HourHeatmap({ records }: { records: UsageRecord[] }) {
         max: maxValue,
         pieces: [
           { lte: 0, color: emptyColor },
-          { gt: 0, lte: q1, color: LEVEL_COLORS[0] },
-          { gt: q1, lte: q2, color: LEVEL_COLORS[1] },
-          { gt: q2, lte: q3, color: LEVEL_COLORS[2] },
-          { gt: q3, color: LEVEL_COLORS[3] },
+          { gt: 0, lte: q1, color: levels[0] },
+          { gt: q1, lte: q2, color: levels[1] },
+          { gt: q2, lte: q3, color: levels[2] },
+          { gt: q3, color: levels[3] },
         ],
       },
       series: [
@@ -252,7 +261,7 @@ export function HourHeatmap({ records }: { records: UsageRecord[] }) {
         },
       ],
     }
-  }, [cells, dark, metric, palette, summary])
+  }, [cells, dark, metric, palette, summary, levels])
 
   const totalActivity = cells.reduce((sum, cell) => sum + cell.count, 0)
 
@@ -297,7 +306,7 @@ export function HourHeatmap({ records }: { records: UsageRecord[] }) {
       />
       <div className="mt-1.5 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
         <span className="mr-0.5">Less</span>
-        {[emptyColor, ...LEVEL_COLORS].map((color, index) => (
+        {[emptyColor, ...levels].map((color, index) => (
           <span
             key={`${color}-${index}`}
             className="size-2.5 rounded-[3px]"

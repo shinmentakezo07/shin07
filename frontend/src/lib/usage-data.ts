@@ -12,32 +12,79 @@ export const RANGES = [
 
 export type RangeKey = (typeof RANGES)[number]["key"]
 
-export const CHART_COLORS = [
-  "#f59e0b",
-  "#0ea5e9",
-  "#10b981",
-  "#8b5cf6",
-  "#f43f5e",
-  "#84cc16",
-  "#f97316",
-  "#06b6d4",
-  "#6366f1",
-  "#ec4899",
-]
+// Validated categorical palette (dataviz skill): slot order is the CVD-safety
+// mechanism — never reorder. Both modes are selected against the app's card
+// surfaces (light #ffffff, dark #1c1917).
+export const LIGHT_CHART_COLORS = [
+  "#2a78d6", // 1 blue
+  "#eb6834", // 2 orange
+  "#1baf7a", // 3 aqua
+  "#eda100", // 4 yellow
+  "#e87ba4", // 5 magenta
+  "#008300", // 6 green
+  "#4a3aa7", // 7 violet
+  "#e34948", // 8 red
+] as const
 
+export const DARK_CHART_COLORS = [
+  "#3987e5", // 1 blue
+  "#d95926", // 2 orange
+  "#199e70", // 3 aqua
+  "#c98500", // 4 yellow
+  "#d55181", // 5 magenta
+  "#008300", // 6 green
+  "#9085e9", // 7 violet
+  "#e66767", // 8 red
+] as const
+
+/** Light-mode alias for call sites that have no theme context. */
+export const CHART_COLORS = LIGHT_CHART_COLORS
+
+export function chartPalette(dark: boolean): readonly string[] {
+  return dark ? DARK_CHART_COLORS : LIGHT_CHART_COLORS
+}
+
+// Donut token slices map to categorical slots (input→1 … reasoning→5).
 export const TOKEN_COLORS = {
-  input: "#0ea5e9",
-  output: "#f59e0b",
-  cacheRead: "#06b6d4",
-  cacheWrite: "#8b5cf6",
-  reasoning: "#f43f5e",
+  input: "#2a78d6",
+  output: "#eb6834",
+  cacheRead: "#1baf7a",
+  cacheWrite: "#eda100",
+  reasoning: "#e87ba4",
 } as const
 
-export const STATUS_COLORS = {
-  success: "#10b981",
-  error: "#ef4444",
-  cancelled: "#f59e0b",
+export const TOKEN_COLORS_DARK = {
+  input: "#3987e5",
+  output: "#d95926",
+  cacheRead: "#199e70",
+  cacheWrite: "#c98500",
+  reasoning: "#d55181",
 } as const
+
+export type TokenSlice = keyof typeof TOKEN_COLORS
+
+export function tokenColor(key: TokenSlice, dark: boolean): string {
+  return (dark ? TOKEN_COLORS_DARK : TOKEN_COLORS)[key]
+}
+
+// Fixed status palette (dataviz skill): never themed, always paired with
+// icon + label in the UI.
+export const STATUS_COLORS = {
+  success: "#0ca30c",
+  error: "#d03b3b",
+  cancelled: "#fab219",
+} as const
+
+// Blue sequential ramp for the hour heatmap (skill steps; ordinal-safe in both
+// modes: light starts ≥ step 250, dark ends ≤ step 600).
+export const HEATMAP_LEVEL_COLORS_LIGHT = ["#86b6ef", "#6da7ec", "#3987e5", "#1c5cab"]
+export const HEATMAP_LEVEL_COLORS_DARK = ["#5598e7", "#2a78d6", "#256abf", "#184f95"]
+export const HEATMAP_EMPTY_LIGHT = "#f0efec"
+export const HEATMAP_EMPTY_DARK = "#383835"
+export const HEATMAP_PEAK_RING_LIGHT = "#2a78d6"
+export const HEATMAP_PEAK_RING_DARK = "#5598e7"
+/** Dark-blue ink for labels on the lightest heatmap levels (light mode only). */
+export const HEATMAP_LABEL_ON_LIGHT = "#1c5cab"
 
 export interface TimeBucket {
   start: number
@@ -258,13 +305,13 @@ export function computeKpis(records: UsageRecord[], now: number): Kpis {
   }
 }
 
-export function buildTokenMix(kpis: Kpis): DonutDatum[] {
+export function buildTokenMix(kpis: Kpis, dark: boolean): DonutDatum[] {
   return [
-    { name: "Input", value: kpis.inputTokens, color: TOKEN_COLORS.input },
-    { name: "Output", value: kpis.outputTokens, color: TOKEN_COLORS.output },
-    { name: "Cache read", value: kpis.cacheReadTokens, color: TOKEN_COLORS.cacheRead },
-    { name: "Cache write", value: kpis.cacheWriteTokens, color: TOKEN_COLORS.cacheWrite },
-    { name: "Reasoning", value: kpis.reasoningTokens, color: TOKEN_COLORS.reasoning },
+    { name: "Input", value: kpis.inputTokens, color: tokenColor("input", dark) },
+    { name: "Output", value: kpis.outputTokens, color: tokenColor("output", dark) },
+    { name: "Cache read", value: kpis.cacheReadTokens, color: tokenColor("cacheRead", dark) },
+    { name: "Cache write", value: kpis.cacheWriteTokens, color: tokenColor("cacheWrite", dark) },
+    { name: "Reasoning", value: kpis.reasoningTokens, color: tokenColor("reasoning", dark) },
   ].filter((datum) => datum.value > 0)
 }
 

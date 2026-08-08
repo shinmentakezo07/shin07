@@ -643,7 +643,7 @@ export default function App() {
               <ActiveIcon className="size-4.5" />
             </div>
             <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold leading-tight">
+              <h2 className="truncate text-lg font-semibold tracking-tight leading-tight">
                 {activeGroup.title}
               </h2>
               <p className="truncate text-xs text-muted-foreground">
@@ -664,7 +664,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex-1 space-y-8 p-4 md:p-6">
+        <div className="flex-1 space-y-6 p-4 md:p-6">
           {activeView === "providers" && (
             <ProvidersView
               config={config}

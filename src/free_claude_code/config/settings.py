@@ -379,6 +379,10 @@ class Settings(BaseSettings):
     # ==================== Server ====================
     host: str = "0.0.0.0"
     port: int = 8082
+    # Hugging Face Spaces sets SPACE_ID (e.g. "owner/space"); when present the
+    # Admin UI is served at the Space URL instead of loopback-only, so the
+    # admin routes relax their local-origin checks for that runtime.
+    hf_space_id: str = Field(default="", validation_alias="SPACE_ID")
     open_admin_browser: bool = Field(default=True, validation_alias="FCC_OPEN_BROWSER")
     # Optional proxy bearer token protecting public API endpoints.
     # Set via env `ANTHROPIC_AUTH_TOKEN`. When empty, no auth is required.

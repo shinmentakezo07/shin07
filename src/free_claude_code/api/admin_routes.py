@@ -23,6 +23,7 @@ from free_claude_code.config.provider_catalog import (
     PROVIDER_CATALOG,
     ProviderAuthKind,
 )
+from free_claude_code.config.settings import get_settings
 from free_claude_code.core.version import package_version
 
 from .dependencies import get_services
@@ -71,6 +72,11 @@ def _origin_is_local(origin: str | None) -> bool:
 
 def require_loopback_admin(request: Request) -> None:
     """Allow admin access only from the local machine."""
+    if get_settings().hf_space_id:
+        # Running inside a Hugging Face Space: the Admin UI is exposed at the
+        # Space URL by design, so the loopback and local-origin checks do not
+        # apply to that runtime. Local installs keep the gate unchanged.
+        return
 
     client_host = request.client.host if request.client else None
     if not _is_loopback_host(client_host):

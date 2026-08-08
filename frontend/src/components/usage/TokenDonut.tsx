@@ -6,9 +6,11 @@ import {
   type Kpis,
 } from "@/lib/usage-data"
 import { ChartCard, ChartTooltip } from "./chart-primitives"
+import { useResolvedTheme } from "./use-resolved-theme"
 
 export function TokenDonut({ kpis }: { kpis: Kpis }) {
-  const data = buildTokenMix(kpis)
+  const dark = useResolvedTheme() === "dark"
+  const data = buildTokenMix(kpis, dark)
   const total = data.reduce((sum, datum) => sum + datum.value, 0)
   const totalTokens = kpis.inputTokens + kpis.outputTokens
   return (
@@ -47,7 +49,7 @@ export function TokenDonut({ kpis }: { kpis: Kpis }) {
           </ResponsiveContainer>
         </div>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <p className="font-mono text-lg font-semibold leading-tight">
+          <p className="font-mono text-xl font-semibold tracking-tight leading-tight">
             {formatTokens(totalTokens)}
           </p>
           <p className="text-[11px] text-muted-foreground">tokens</p>

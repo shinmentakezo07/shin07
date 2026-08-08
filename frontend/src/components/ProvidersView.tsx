@@ -78,7 +78,7 @@ export function ProvidersView({
       {connectedProviders.length > 0 && (
         <section className="space-y-4" aria-label="Connected accounts">
           <div>
-            <h3 className="text-lg font-semibold">Connected accounts</h3>
+            <h3 className="text-lg font-semibold tracking-tight">Connected accounts</h3>
             <p className="text-sm text-muted-foreground">
               Use an existing subscription without storing credentials in .env.
             </p>
@@ -101,7 +101,7 @@ export function ProvidersView({
       )}
 
       <section className="space-y-4" aria-label="Provider status">
-        <h3 className="text-lg font-semibold">Providers</h3>
+        <h3 className="text-lg font-semibold tracking-tight">Providers</h3>
         <div className="grid gap-4 md:grid-cols-2">
           {remoteProviders.map((provider) => (
             <ProviderCard

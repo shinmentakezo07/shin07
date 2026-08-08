@@ -519,7 +519,7 @@ export function OpenAICompatibleView({
   return (
     <section className="space-y-4">
       <div>
-        <h3 className="text-lg font-semibold">Endpoints</h3>
+        <h3 className="text-lg font-semibold tracking-tight">Endpoints</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Add any OpenAI-compatible server (vLLM, LM Studio, Ollama, Together, or
           your own gateway). Each endpoint becomes a numbered provider:{" "}

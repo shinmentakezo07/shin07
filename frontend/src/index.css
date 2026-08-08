@@ -97,6 +97,32 @@ body {
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Subtle ambient wash so the page plane is not flat. */
+  background:
+    radial-gradient(
+      1200px 600px at 15% -10%,
+      color-mix(in oklch, var(--primary) 6%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at 100% 0%,
+      color-mix(in oklch, var(--ring) 5%, transparent),
+      transparent 55%
+    ),
+    var(--background);
+  background-attachment: fixed;
+}
+
+@utility card-hover {
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.18);
+  }
 }
 
 /* Slim scrollbars for dense lists (model pickers, endpoint model lists). */

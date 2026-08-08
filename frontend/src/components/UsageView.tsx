@@ -206,7 +206,7 @@ export function UsageView() {
     <section className="space-y-5" aria-label="Usage statistics">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold">Usage</h3>
+          <h3 className="text-xl font-semibold tracking-tight">Usage</h3>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Token throughput and request routing for the gateway, refreshed
             automatically every 10 seconds. Full prompts are captured for each

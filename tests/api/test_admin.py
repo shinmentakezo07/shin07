@@ -60,6 +60,20 @@ def test_admin_page_is_loopback_only(monkeypatch, tmp_path):
     assert remote_client.get("/admin").status_code == 403
 
 
+def test_admin_routes_are_reachable_remotely_inside_hf_space(monkeypatch, tmp_path):
+    _set_home(monkeypatch, tmp_path)
+    space_settings = Settings.model_validate({"SPACE_ID": "sshinmen/shin"})
+    with patch(
+        "free_claude_code.api.admin_routes.get_settings",
+        return_value=space_settings,
+    ):
+        app = create_test_app()
+        remote_client = TestClient(app, client=("203.0.113.10", 50000))
+
+        assert remote_client.get("/admin").status_code == 200
+        assert remote_client.get("/admin/api/config").status_code == 200
+
+
 def _admin_asset_urls() -> tuple[str, ...]:
     """Every built admin asset URL, so cache policy covers hashed bundles."""
 

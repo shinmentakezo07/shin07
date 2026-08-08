@@ -125,7 +125,7 @@ function SettingsSection({
               <SectionIcon className="size-4.5" />
             </span>
             <div className="min-w-0">
-              <h3 className="text-base font-semibold leading-tight">
+              <h3 className="text-base font-semibold tracking-tight leading-tight">
                 {section.label}
               </h3>
               {section.description ? (

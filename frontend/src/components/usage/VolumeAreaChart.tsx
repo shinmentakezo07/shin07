@@ -90,19 +90,19 @@ export function VolumeAreaChart({ buckets }: { buckets: TimeBucket[] }) {
                   <stop
                     offset="0%"
                     stopColor={STATUS_COLORS[status]}
-                    stopOpacity={0.45}
+                    stopOpacity={0.1}
                   />
                   <stop
                     offset="100%"
                     stopColor={STATUS_COLORS[status]}
-                    stopOpacity={0.05}
+                    stopOpacity={0.02}
                   />
                 </linearGradient>
               ))}
             </defs>
             <CartesianGrid
               stroke="var(--border)"
-              strokeDasharray="3 3"
+              strokeWidth={1}
               vertical={false}
             />
             <XAxis
@@ -127,7 +127,9 @@ export function VolumeAreaChart({ buckets }: { buckets: TimeBucket[] }) {
               name="Success"
               stackId="volume"
               stroke={STATUS_COLORS.success}
-              strokeWidth={1.5}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
               fill={`url(#vol-${suffix}-success)`}
             />
             <Area
@@ -136,7 +138,9 @@ export function VolumeAreaChart({ buckets }: { buckets: TimeBucket[] }) {
               name="Error"
               stackId="volume"
               stroke={STATUS_COLORS.error}
-              strokeWidth={1.5}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
               fill={`url(#vol-${suffix}-error)`}
             />
             <Area
@@ -145,7 +149,9 @@ export function VolumeAreaChart({ buckets }: { buckets: TimeBucket[] }) {
               name="Cancelled"
               stackId="volume"
               stroke={STATUS_COLORS.cancelled}
-              strokeWidth={1.5}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
               fill={`url(#vol-${suffix}-cancelled)`}
             />
           </AreaChart>

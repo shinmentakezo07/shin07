@@ -31,11 +31,11 @@ export function Sidebar({
       )}
     >
       <div className="flex items-center gap-3 px-5 py-5">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-sm">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground shadow-sm ring-1 ring-border/40">
           <Bot className="size-5" />
         </div>
         <div className="min-w-0">
-          <h1 className="truncate text-sm leading-tight font-semibold">
+          <h1 className="truncate text-sm leading-tight font-semibold tracking-tight">
             Free Claude Code
           </h1>
           <p className="text-xs text-muted-foreground">Server Control</p>
@@ -56,9 +56,9 @@ export function Sidebar({
                 <button
                   type="button"
                   className={cn(
-                    "relative flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors",
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors",
                     isActive
-                      ? "bg-accent text-accent-foreground"
+                      ? "bg-accent text-accent-foreground shadow-sm ring-1 ring-primary/20"
                       : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                   )}
                   aria-current={isActive ? "page" : undefined}
@@ -67,9 +67,6 @@ export function Sidebar({
                     onNavigate?.()
                   }}
                 >
-                  {isActive ? (
-                    <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary" />
-                  ) : null}
                   <Icon
                     className={cn(
                       "size-4 shrink-0",
@@ -91,7 +88,7 @@ export function Sidebar({
           <FileCog className="size-3.5 shrink-0" />
           Managed config
         </div>
-        <p className="break-all font-mono text-[11px] leading-relaxed text-muted-foreground/80">
+        <p className="break-all rounded-md bg-muted/40 px-2.5 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground/80">
           {config.paths.managed}
         </p>
       </div>

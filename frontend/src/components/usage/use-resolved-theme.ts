@@ -23,13 +23,13 @@ export function useResolvedTheme(): ResolvedTheme {
   return theme
 }
 
-/** Concrete palette for canvas rendering, matched to the stone/amber theme. */
+/** Concrete palette for canvas rendering, matched to the app's CSS tokens. */
 export function resolveChartTheme(theme: ResolvedTheme) {
   const dark = theme === "dark"
   return {
-    text: dark ? "#e7e5e4" : "#44403c",
-    muted: dark ? "#a8a29e" : "#a8a29e",
-    grid: dark ? "#3e3a36" : "#e7e5e4",
+    text: dark ? "#f5f5f4" : "#292524",
+    muted: dark ? "#a8a29e" : "#78716c",
+    grid: dark ? "#292524" : "#e7e5e4",
     card: dark ? "#1c1917" : "#ffffff",
   }
 }

@@ -1,9 +1,9 @@
 import { useState } from "react"
 
 import {
-  CHART_COLORS,
   buildTopByModel,
   buildTopByProvider,
+  chartPalette,
   formatTokens,
   type EndpointUsage,
 } from "@/lib/usage-data"
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import type { UsageRecord } from "@/lib/types"
 import { Badge } from "../ui/badge"
 import { ChartCard } from "./chart-primitives"
+import { useResolvedTheme } from "./use-resolved-theme"
 
 type GroupBy = "model" | "provider"
 
@@ -20,7 +21,8 @@ const GROUP_OPTIONS: { key: GroupBy; label: string }[] = [
 ]
 
 function BarListRow({ item, index, maxTokens }: { item: EndpointUsage; index: number; maxTokens: number }) {
-  const color = CHART_COLORS[index % CHART_COLORS.length]
+  const dark = useResolvedTheme() === "dark"
+  const color = chartPalette(dark)[index % 8]
   const share = maxTokens > 0 ? (item.tokens / maxTokens) * 100 : 0
   return (
     <li>

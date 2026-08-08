@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+# Hugging Face Spaces injects PORT (default 7860) and routes external traffic
+# to it. FCC's Settings read the PORT env var directly; export it and log the
+# effective bind port so the server log confirms the expected address.
+if [ -n "${PORT:-}" ]; then
+  echo "fcc: platform-provided PORT=${PORT}" >&2
+  export PORT
+fi
+
 # Seed a writable managed env file so the Admin UI has a starting point.
 # A bind-mounted host ./.env or a named volume at /app/.env is preserved;
 # anything else (for example an empty directory Docker auto-created for a

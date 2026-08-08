@@ -12,15 +12,16 @@ import {
 import { Area, AreaChart, ResponsiveContainer } from "recharts"
 
 import {
-  CHART_COLORS,
   STATUS_COLORS,
-  TOKEN_COLORS,
+  chartPalette,
+  tokenColor,
   formatDuration,
   formatRate,
   formatTokens,
   type Kpis,
   type TimeBucket,
 } from "@/lib/usage-data"
+import { useResolvedTheme } from "./use-resolved-theme"
 import { Card, CardContent } from "../ui/card"
 
 interface KpiCardProps {
@@ -48,7 +49,7 @@ function KpiCard({ label, value, hint, icon, color, series }: KpiCardProps) {
           </span>
           <p className="truncate text-xs text-muted-foreground">{label}</p>
         </div>
-        <p className="mt-1.5 truncate font-mono text-xl font-semibold leading-tight">
+        <p className="mt-1.5 truncate font-mono text-2xl font-semibold tracking-tight leading-tight">
           {value}
         </p>
         {hint ? (
@@ -60,7 +61,7 @@ function KpiCard({ label, value, hint, icon, color, series }: KpiCardProps) {
               <AreaChart data={points} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+                    <stop offset="0%" stopColor={color} stopOpacity={0.1} />
                     <stop offset="100%" stopColor={color} stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -68,7 +69,8 @@ function KpiCard({ label, value, hint, icon, color, series }: KpiCardProps) {
                   type="monotone"
                   dataKey="point"
                   stroke={color}
-                  strokeWidth={1.5}
+                  strokeWidth={2}
+                  strokeLinecap="round"
                   fill={`url(#${gradientId})`}
                   isAnimationActive={false}
                   dot={false}
@@ -87,13 +89,15 @@ function KpiCard({ label, value, hint, icon, color, series }: KpiCardProps) {
 }
 
 export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] }) {
+  const dark = useResolvedTheme() === "dark"
+  const palette = chartPalette(dark)
   const cards: KpiCardProps[] = [
     {
       label: "Total requests",
       value: kpis.requests.toLocaleString(),
       hint: `${buckets.length} time buckets in window`,
       icon: <Activity className="size-3.5" />,
-      color: CHART_COLORS[1],
+      color: palette[0],
       series: buckets.map((bucket) => bucket.count),
     },
     {
@@ -101,7 +105,7 @@ export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] 
       value: formatTokens(kpis.inputTokens + kpis.outputTokens),
       hint: `${formatTokens(kpis.inputTokens)} in · ${formatTokens(kpis.outputTokens)} out`,
       icon: <Braces className="size-3.5" />,
-      color: CHART_COLORS[0],
+      color: palette[1],
       series: buckets.map((bucket) => bucket.tokens),
     },
     {
@@ -109,7 +113,7 @@ export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] 
       value: formatTokens(kpis.cacheReadTokens + kpis.cacheWriteTokens),
       hint: `${formatTokens(kpis.cacheReadTokens)} read · ${formatTokens(kpis.cacheWriteTokens)} written`,
       icon: <Database className="size-3.5" />,
-      color: TOKEN_COLORS.cacheRead,
+      color: tokenColor("cacheRead", dark),
       series: buckets.map(
         (bucket) => bucket.cacheReadTokens + bucket.cacheWriteTokens,
       ),
@@ -119,7 +123,7 @@ export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] 
       value: formatTokens(kpis.reasoningTokens),
       hint: "thinking / extended output",
       icon: <BookOpen className="size-3.5" />,
-      color: TOKEN_COLORS.reasoning,
+      color: tokenColor("reasoning", dark),
       series: buckets.map((bucket) => bucket.reasoningTokens),
     },
     {
@@ -127,7 +131,7 @@ export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] 
       value: formatTokens(Math.round(kpis.tpm)),
       hint: "in+out · last 60s",
       icon: <Gauge className="size-3.5" />,
-      color: CHART_COLORS[3],
+      color: palette[3],
       series: buckets.map((bucket) => (bucket.tokens / bucket.bucketSeconds) * 60),
     },
     {
@@ -135,7 +139,7 @@ export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] 
       value: formatDuration(kpis.avgLatencyMs),
       hint: "per request",
       icon: <Timer className="size-3.5" />,
-      color: CHART_COLORS[7],
+      color: palette[6],
       series: buckets.map((bucket) =>
         bucket.latencyCount > 0 ? bucket.latencySum / bucket.latencyCount : 0,
       ),
@@ -153,7 +157,7 @@ export function KpiCards({ kpis, buckets }: { kpis: Kpis; buckets: TimeBucket[] 
       value: kpis.tps.toFixed(1),
       hint: "output only · last 60s",
       icon: <Zap className="size-3.5" />,
-      color: CHART_COLORS[2],
+      color: palette[2],
       series: buckets.map((bucket) => bucket.tokens / bucket.bucketSeconds),
     },
   ]

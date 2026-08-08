@@ -2,8 +2,8 @@ import { useMemo } from "react"
 import type { EChartsCoreOption } from "echarts/core"
 
 import {
-  CHART_COLORS,
   buildRoutingSankey,
+  chartPalette,
   type SankeyNode,
 } from "@/lib/usage-data"
 import type { UsageRecord } from "@/lib/types"
@@ -11,20 +11,21 @@ import { EChart } from "./EChart"
 import { ChartCard } from "./chart-primitives"
 import { resolveChartTheme, useResolvedTheme } from "./use-resolved-theme"
 
-const CLIENT_COLOR = "#f59e0b"
-
 export function RoutingSankey({ records }: { records: UsageRecord[] }) {
   const dark = useResolvedTheme()
-  const { nodes, links } = useMemo(() => buildRoutingSankey(records), [records])
+  const isDark = dark === "dark"
   const palette = resolveChartTheme(dark)
+  const clientColor = isDark ? "#d95926" : "#eb6834"
+  const chartColors = chartPalette(isDark)
+  const { nodes, links } = useMemo(() => buildRoutingSankey(records), [records])
 
   const option = useMemo<EChartsCoreOption>(() => {
     const displayMap = new Map(nodes.map((node) => [node.name, node.display]))
     const categoryIndex: Record<number, number> = { 0: 0, 1: 0, 2: 0 }
     const nodeColor = (node: SankeyNode): string => {
-      if (node.category === 0) return CLIENT_COLOR
+      if (node.category === 0) return clientColor
       const index = categoryIndex[node.category]++
-      return CHART_COLORS[(index + (node.category - 1) * 3) % CHART_COLORS.length]
+      return chartColors[(index + (node.category - 1) * 3) % chartColors.length]
     }
     return {
       tooltip: {
@@ -61,12 +62,12 @@ export function RoutingSankey({ records }: { records: UsageRecord[] }) {
         },
       ],
     }
-  }, [nodes, links, palette])
+  }, [nodes, links, palette, clientColor, chartColors])
 
   const legend = [
-    { label: "Client protocol", color: CLIENT_COLOR },
-    { label: "Gateway model", color: CHART_COLORS[0] },
-    { label: "Provider", color: CHART_COLORS[3] },
+    { label: "Client protocol", color: clientColor },
+    { label: "Gateway model", color: chartColors[0] },
+    { label: "Provider", color: chartColors[3] },
   ]
 
   return (
